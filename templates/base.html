@@ -107,40 +107,34 @@
       display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;
     }
     .production-card{
-      position:relative;aspect-ratio:.78;overflow:hidden;border:0;padding:0;
-      background:#d9d5cd;text-align:left;color:#fff;
-      border-radius:4px;
+      position:relative;aspect-ratio:1.08;overflow:hidden;border:1px solid var(--ink);
+      padding:0;background:transparent;text-align:left;color:var(--ink);
+      border-radius:0;transition:background .18s ease,color .18s ease;
     }
     .production-card[hidden]{display:none}
-    .production-card img{
-      position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
-      transition:transform .45s ease,filter .3s ease;
-    }
-    .production-card:hover img{transform:scale(1.035)}
-    .production-card:after{
-      content:"";position:absolute;inset:0;
-      background:linear-gradient(to top,rgba(0,0,0,.82) 3%,rgba(0,0,0,.20) 58%,rgba(0,0,0,.05));
-    }
+    .production-card:hover{background:var(--ink);color:#fff}
     .production-card.active{
-      outline:5px solid var(--red);outline-offset:-5px;
+      background:var(--red);color:#fff;border-color:var(--red);
+    }
+    .production-graphic{
+      position:absolute;right:12px;top:2px;
+      font-size:clamp(58px,7vw,105px);line-height:1;
+      letter-spacing:-.09em;font-weight:950;opacity:.09;
     }
     .production-content{
       position:absolute;z-index:2;left:18px;right:18px;bottom:17px;
     }
     .production-index{
-      font-size:10px;letter-spacing:.14em;text-transform:uppercase;
-      font-weight:800;margin-bottom:6px;opacity:.8;
+      display:block;font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+      font-weight:900;margin-bottom:8px;opacity:.62;
     }
     .production-title{
-      font-size:clamp(19px,2vw,31px);line-height:.95;
+      display:block;font-size:clamp(19px,2vw,31px);line-height:.95;
       letter-spacing:-.05em;font-weight:950;
     }
     .image-skeleton{
-      position:absolute;inset:0;background:
-      linear-gradient(110deg,#d6d1c8 30%,#e8e5df 45%,#d6d1c8 60%);
-      background-size:200% 100%;animation:shimmer 1.5s infinite;
+      position:absolute;inset:0;background:#242424;
     }
-    @keyframes shimmer{to{background-position-x:-200%}}
     .picker{
       display:none;margin-top:18px;background:var(--ink);color:#fff;
       grid-template-columns:minmax(280px,.7fr) minmax(0,1.3fr);

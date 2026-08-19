@@ -60,9 +60,9 @@
             data-url="{{ p.production_url|e }}"
             aria-label="Vali {{ p.title|e }}"
           >
-            <span class="image-skeleton"></span>
+            <span class="production-graphic">{{ "%02d"|format(loop.index) }}</span>
             <span class="production-content">
-              <span class="production-index">{{ "%02d"|format(loop.index) }}</span>
+              <span class="production-index">Tallinna Linnateater</span>
               <span class="production-title">{{ p.title }}</span>
             </span>
           </button>
@@ -200,7 +200,9 @@
   const imageCache = new Map();
 
   async function getProductionImage(url) {
+    // Images are fetched ONLY for the production the user actually selects.
     if (imageCache.has(url)) return imageCache.get(url);
+
     try {
       const params = new URLSearchParams({production_url: url});
       const r = await fetch("/api/production-image?" + params.toString());
@@ -212,37 +214,6 @@
       return "";
     }
   }
-
-  async function hydrateCard(card) {
-    if (card.dataset.loaded === "1") return;
-    card.dataset.loaded = "1";
-    const image = await getProductionImage(card.dataset.url);
-    if (!image) {
-      const skeleton = card.querySelector(".image-skeleton");
-      if (skeleton) skeleton.style.background = "#2b2926";
-      return;
-    }
-
-    const img = new Image();
-    img.alt = card.dataset.title;
-    img.onload = () => {
-      const skeleton = card.querySelector(".image-skeleton");
-      if (skeleton) skeleton.remove();
-      card.prepend(img);
-    };
-    img.src = image;
-  }
-
-  const observer = new IntersectionObserver(entries => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        hydrateCard(entry.target);
-        observer.unobserve(entry.target);
-      }
-    });
-  }, {rootMargin: "250px"});
-
-  cards.forEach(card => observer.observe(card));
 
   function resetSelection() {
     Object.values(fields).forEach(el => el.value = "");
