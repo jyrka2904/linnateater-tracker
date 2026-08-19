@@ -391,6 +391,69 @@ def _series_url_for_title(title: str):
     return SERIES_BY_TITLE.get(_norm(title))
 
 
+def _series_statuses(series_url: str):
+    """
+    Return {event_code: status} from the Piletilevi SERIES page.
+
+    Sold-out state is authoritative on the series/listing card. A concrete
+    event detail page can still be readable when tickets are sold out, so
+    treating the detail page itself as "available" caused false positives.
+    """
+    html = _get(series_url).text
+    soup = BeautifulSoup(html, "html.parser")
+    statuses = {}
+
+    anchors = []
+    for a in soup.find_all("a", href=True):
+        href = urljoin(series_url, a.get("href") or "")
+        if EVENT_CODE_RE.search(urlparse(href).path):
+            anchors.append((a, href))
+
+    for anchor, href in anchors:
+        try:
+            code = _event_code(href)
+        except Exception:
+            continue
+
+        # Find the SMALLEST ancestor that looks like one event card/row.
+        # Stop as soon as it has a date+time. This prevents accidentally
+        # inheriting "Sold out" from a neighbouring performance.
+        node = anchor
+        context = _clean(anchor.get_text(" ", strip=True))
+
+        for _ in range(7):
+            node = getattr(node, "parent", None)
+            if node is None:
+                break
+
+            text = _clean(node.get_text(" ", strip=True))
+            if not text:
+                continue
+
+            # A useful event row normally contains a date/time and remains
+            # reasonably short. Prefer the first such ancestor.
+            if DATE_TIME_RE.search(text) and len(text) <= 1200:
+                context = text
+                break
+
+        low = _norm(context)
+
+        if "valja muudud" in low or "sold out" in low:
+            status = "Välja müüdud"
+        elif (
+            "muuk peatatud" in low
+            or "müük peatatud" in context.lower()
+            or "suspended" in low
+        ):
+            status = "Müük peatatud"
+        else:
+            status = "Pilet saadaval"
+
+        statuses[code] = status
+
+    return statuses
+
+
 def list_performances(title: str, production_url: str):
     """
     v4: use the verified Piletilevi series page as the canonical source.
@@ -424,6 +487,7 @@ def list_performances(title: str, production_url: str):
                 )
 
         event_urls = _event_links_from_series(series_url)
+        series_statuses = _series_statuses(series_url)
 
         # Some Piletilevi pages can serialize event URLs without normal anchors.
         # _event_links_from_series already checks both forms.
@@ -463,6 +527,11 @@ def list_performances(title: str, production_url: str):
             item["title"] = title
             item["series_url"] = series_url
             item["production_url"] = production_url
+
+            # IMPORTANT: availability comes from the exact event row on the
+            # series page, not from the event detail page.
+            if code in series_statuses:
+                item["status"] = series_statuses[code]
             if not item.get("image_url"):
                 item["image_url"] = production_image
             results.append(item)
@@ -521,46 +590,27 @@ def tracker_image(title: str, event_url: str = "", production_url: str = ""):
 
 
 def check_event(series_url: str, event_code: str):
-    html = _get(series_url).text
-    soup = BeautifulSoup(html, "html.parser")
+    """
+    Worker availability check.
+
+    Piletilevi's series page is the source of truth for SOLD OUT / available.
+    This uses the exact Piletilevi event code, so the status of neighbouring
+    dates cannot leak into the target performance.
+    """
     event_code = event_code.upper()
 
-    target = None
-    for a in soup.find_all("a", href=True):
-        href = (a.get("href") or "").upper()
-        if event_code in href and "/PILETID/" in href:
-            target = a
-            break
+    try:
+        statuses = _series_statuses(series_url)
+        if event_code in statuses:
+            status = statuses[event_code]
+            return status == "Pilet saadaval", status
+    except Exception:
+        # Continue to the conservative fallback below.
+        pass
 
-    if target is not None:
-        node = target
-        context = _clean(target.get_text(" ", strip=True))
-
-        for _ in range(6):
-            node = getattr(node, "parent", None)
-            if node is None:
-                break
-            text = _clean(node.get_text(" ", strip=True))
-            if DATE_TIME_RE.search(text) and len(text) < 1000:
-                context = text
-                break
-
-        low = _norm(context)
-        if "valja muudud" in low or "sold out" in low:
-            return False, "Välja müüdud"
-        if "muuk peatatud" in low or "suspended" in low:
-            return False, "Müük peatatud"
-        return True, "Pilet saadaval"
-
-    if event_code in html.upper() or "/piletid/" in urlparse(series_url).path:
-        body = _clean(soup.get_text(" ", strip=True))
-        low = _norm(body[:7000])
-        if "valja muudud" in low or "sold out" in low:
-            return False, "Välja müüdud"
-        if "muuk peatatud" in low or "suspended" in low:
-            return False, "Müük peatatud"
-        return True, "Pilet saadaval"
-
+    # Conservative fallback: if the exact event cannot be located on the
+    # series page, do NOT claim availability. This prevents false SMS alerts.
     raise RuntimeError(
-        "Jälgitavat etendust ei leitud enam Piletilevi lehelt."
+        "Etenduse saadavust ei saanud Piletilevi seerialehelt kindlalt tuvastada."
     )
+
