@@ -9,8 +9,8 @@ from twilio.rest import Client
 
 from db import get_conn, init_db
 from ticket_source import check_event
-from image_cache import refresh_production_images
 from performance_cache import refresh_all_performances
+from production_media import refresh_all_production_media, seconds_until_next_midnight
 
 
 TZ = ZoneInfo("Europe/Tallinn")
@@ -25,8 +25,6 @@ TWILIO_MESSAGING_SERVICE_SID = os.environ[
 
 twilio = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
-IMAGE_CACHE_REFRESH_SECONDS = 6 * 60 * 60
-_last_image_refresh = 0.0
 
 
 def get_trackers():
@@ -102,34 +100,41 @@ def send_and_remove(t):
     print(f"🗑 Tracker #{t['id']} removed after alert.", flush=True)
 
 
-def image_cache_loop():
+def production_media_loop():
     """
-    Refresh image quality completely outside the ticket-checking loop.
+    Build the image library on worker startup, then refresh it every day at
+    00:00 Europe/Tallinn time.
     """
-    first_run = True
-
     while True:
-        print("🖼 Checking repertoire image quality in background...", flush=True)
+        print(
+            "🖼 Refreshing stored production images...",
+            flush=True,
+        )
 
         try:
-            total, resolved, upgraded = refresh_production_images(
-                max_workers=4,
-                force_all=first_run,
-            )
+            total, ok, failed = refresh_all_production_media()
+
             print(
-                f"🖼 Image cache ready: {resolved} refreshed / "
-                f"{total} productions; {upgraded} low-res images upgraded.",
+                f"🖼 Production image library ready: "
+                f"{ok}/{total} stored, {failed} failed.",
                 flush=True,
             )
         except Exception as error:
             print(
-                f"⚠️ Image cache refresh failed: "
+                f"⚠️ Production image library refresh failed: "
                 f"{type(error).__name__}: {error}",
                 flush=True,
             )
 
-        first_run = False
-        time.sleep(6 * 60 * 60)
+        wait = seconds_until_next_midnight()
+
+        print(
+            f"🖼 Next production image refresh at 00:00 "
+            f"({wait // 3600}h {(wait % 3600) // 60}m).",
+            flush=True,
+        )
+
+        time.sleep(wait)
 
 
 def run_cycle():
@@ -201,6 +206,12 @@ def main():
     threading.Thread(
         target=performance_cache_loop,
         name="performance-cache",
+        daemon=True,
+    ).start()
+
+    threading.Thread(
+        target=production_media_loop,
+        name="production-media",
         daemon=True,
     ).start()
 

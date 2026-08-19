@@ -80,3 +80,19 @@ def init_db():
                 """
             )
 
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS production_image_store (
+                    slug TEXT PRIMARY KEY,
+                    production_url TEXT UNIQUE NOT NULL,
+                    title TEXT NOT NULL,
+                    source_url TEXT,
+                    image_bytes BYTEA NOT NULL,
+                    mime_type TEXT NOT NULL DEFAULT 'image/webp',
+                    width INTEGER,
+                    height INTEGER,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+

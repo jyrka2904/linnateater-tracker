@@ -1,65 +1,82 @@
-# Linnateater Tracker v20
+# Linnateater Tracker v22
 
-Built directly on v19.
+## New production-image architecture
 
-## Why v19 did not fix all blurry cards
+v22 stops serving production-card images directly from Linnateater or
+Piletilevi during normal browsing.
 
-The affected image files are not necessarily small. A 1000+ px image can still
-be visually blurred/soft, so dimension checks alone cannot identify the
-problem.
+The actual optimized image files are stored in PostgreSQL as BYTEA.
 
-## v20: actual sharpness detection
+For this app the scale is small (roughly a few dozen production images), so
+PostgreSQL is a practical solution and avoids adding Railway Volume/S3 setup.
 
-The Railway worker now measures two things:
+## Daily image workflow
 
-1. physical image dimensions;
-2. edge-detail variance (approximate visual sharpness).
+The Railway worker starts a separate `production-media` background thread.
 
-A lightweight repertoire thumbnail is used immediately when it is both large
-enough and sharp enough.
+On startup:
+1. read the current Linnateater productions;
+2. inspect several high-resolution images from each production page;
+3. choose a large suitable source;
+4. crop/resize to one standard 900×1150 card;
+5. encode as WebP quality 84;
+6. store the actual WebP bytes in PostgreSQL.
 
-If it is large but measurably blurry:
-- fetch several alternative images from that production's Linnateater page;
-- score them by sharpness and dimensions;
-- select a meaningfully better candidate;
-- persist only that URL in PostgreSQL.
+After startup, the complete image library refreshes once per day at exactly
+00:00 Europe/Tallinn time.
 
-The normal repertoire HTTP request still performs NONE of this work.
+Productions removed from the current repertoire are removed from the stored
+image library.
 
-## Performance characteristics
+## Repertoire performance
 
-All quality analysis stays inside the dedicated image-cache background thread.
+The repertoire page itself:
+- does not scrape Linnateater for card images;
+- does not fetch Piletilevi images;
+- does not run blur/resolution analysis;
+- reads only metadata from PostgreSQL;
+- displays `/media/production/<slug>.webp`.
 
-It does not block:
-- repertoire page rendering;
-- opening a production modal;
-- the 15–30 second ticket-monitor cycle;
-- the performance-cache background thread.
+The media response has a one-year immutable browser cache. The URL includes a
+version timestamp, so a newly stored daily image automatically invalidates the
+old browser cache.
 
-Only blurry/small thumbnails trigger inspection of multiple alternatives.
+## Why this should fix blurry cards
 
-## First deploy
+The old blurry cards came from Linnateater listing thumbnails.
 
-The first v20 worker run force-rechecks all current production images so old
-v19 cache choices can be replaced.
+v22 deliberately chooses images from the individual production page, creates
+our own standardized WebP asset, and serves that same stored file every time.
 
-Worker logs will show messages such as:
+Therefore cards such as:
+- Alguses oli laul
+- Esietendus
+- Kolemees
+- Krum
 
-    🖼 Replaced blurry thumbnail: Krum → 1200x1600
-       (sharpness 420.3; 3 alternatives checked)
+are no longer dependent on their listing-thumbnail file.
 
-## Existing features retained
+## Existing behavior retained
 
-Everything from v18/v19 remains, including:
-- fast PostgreSQL performance cache;
-- multiple dates in one modal;
-- current Piletilevi series mappings;
+- v18 performance cache;
+- multiple dates selectable at once;
 - Repertuaar / Minu jälgimised;
 - password login;
 - Twilio SMS alerts;
+- v21 clean Minu jälgimised page;
 - approved login headline spacing.
 
 ## Deploy
 
-Replace v19 files with this ZIP. Railway, PostgreSQL and Twilio settings remain
-unchanged.
+Replace v21 files with this ZIP.
+
+No new Railway Volume, S3 bucket, PostgreSQL service, or Twilio configuration
+is needed.
+
+After the new worker starts, watch for:
+
+    🖼 Refreshing stored production images...
+    🖼 Production image library ready: ...
+
+The first run creates the whole PostgreSQL image library. After it completes,
+hard-refresh the repertoire page once.

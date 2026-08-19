@@ -10,6 +10,7 @@ from flask import (
     jsonify,
     redirect,
     render_template,
+    make_response,
     request,
     session,
     url_for,
@@ -18,7 +19,7 @@ from twilio.rest import Client
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from db import get_conn, init_db
-from image_cache import get_cached_images
+from production_media import get_media_manifest, get_media_bytes
 from performance_cache import get_cached_performances, save_cached_performances
 from ticket_source import (
     list_performances,
@@ -432,13 +433,19 @@ def dashboard():
     try:
         productions = list_productions()
         productions_error = None
-        cached_images = get_cached_images(productions)
+        media_manifest = get_media_manifest()
 
         for production in productions:
-            production["display_image_url"] = (
-                production.get("image_url")
-                or cached_images.get(production["production_url"], "")
-            )
+            media = media_manifest.get(production["slug"])
+            if media:
+                version = int(media["updated_at"].timestamp())
+                production["display_image_url"] = url_for(
+                    "production_media_asset",
+                    slug=production["slug"],
+                    v=version,
+                )
+            else:
+                production["display_image_url"] = ""
     except Exception as e:
         productions = []
         productions_error = str(e)
@@ -473,27 +480,63 @@ def my_trackers():
     )
 
 
+@app.get("/media/production/<slug>.webp")
+def production_media_asset(slug):
+    row = get_media_bytes(slug)
+
+    if not row:
+        return ("", 404)
+
+    response = make_response(bytes(row["image_bytes"]))
+    response.headers["Content-Type"] = row["mime_type"] or "image/webp"
+    response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return response
+
+
 @app.get("/api/production-image")
 @login_required
 def api_production_image():
-    production_url = (request.args.get("production_url") or "").strip()
-    title = (request.args.get("title") or "").strip()
+    """
+    Compatibility endpoint for the modal.
 
-    if not production_url.startswith("https://linnateater.ee/"):
-        return jsonify({"ok": False, "error": "Vigane lavastuse link."}), 400
+    No external image fetch happens here. It only returns the locally stored
+    production image, if the daily media cache has one.
+    """
+    production_url = (request.args.get("production_url") or "").strip()
 
     try:
-        image = (
-            production_image(title, production_url)
-            if title
-            else page_image(production_url)
+        productions = list_productions()
+        target = next(
+            (
+                p
+                for p in productions
+                if p["production_url"] == production_url
+            ),
+            None,
         )
+
+        if not target:
+            return jsonify({"ok": True, "image_url": ""})
+
+        manifest = get_media_manifest()
+        media = manifest.get(target["slug"])
+
+        if not media:
+            return jsonify({"ok": True, "image_url": ""})
+
+        version = int(media["updated_at"].timestamp())
+
         return jsonify({
             "ok": True,
-            "image_url": image,
+            "image_url": url_for(
+                "production_media_asset",
+                slug=target["slug"],
+                v=version,
+            ),
         })
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 502
+
+    except Exception:
+        return jsonify({"ok": True, "image_url": ""})
 
 
 @app.get("/api/performances")
