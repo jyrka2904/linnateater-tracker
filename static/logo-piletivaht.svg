@@ -1,8 +1,42 @@
-<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect x="10" y="10" width="108" height="108" rx="28" fill="#111112"/>
-  <path d="M31 42C39 42 39 34 47 34H81C89 34 89 42 97 42V54C89 54 89 62 81 62H47C39 62 39 54 31 54V42Z" fill="#F4F0E9"/>
-  <path d="M31 74C39 74 39 66 47 66H81C89 66 89 74 97 74V86C89 86 89 94 81 94H47C39 94 39 86 31 86V74Z" fill="#F4F0E9" opacity="0.92"/>
-  <circle cx="92" cy="35" r="11" fill="#D73642"/>
-  <path d="M52 48H76" stroke="#111112" stroke-width="4.5" stroke-linecap="round"/>
-  <path d="M52 80H70" stroke="#111112" stroke-width="4.5" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="320" viewBox="0 0 1400 320" fill="none">
+  <defs>
+    <linearGradient id="spotlight" x1="110" y1="110" x2="110" y2="245" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#C99A4B" stop-opacity="0.92"/>
+      <stop offset="1" stop-color="#C99A4B" stop-opacity="0.10"/>
+    </linearGradient>
+    <filter id="softGlow" x="0" y="0" width="250" height="270" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Icon -->
+  <g transform="translate(32 30)">
+    <!-- Stylized P -->
+    <path d="M20 10H88C142 10 179 44 179 96C179 145 143 178 90 178H74V250H20V10ZM74 57V131H87C110 131 125 117 125 95C125 72 110 57 87 57H74Z" fill="#F3E8D5"/>
+
+    <!-- Curtain drape inside the P -->
+    <path d="M58 19C70 34 83 49 96 65C101 48 108 32 116 17" stroke="#111111" stroke-width="5" stroke-linecap="round"/>
+    <path d="M67 18C79 34 90 50 100 68" stroke="#111111" stroke-width="3.8" stroke-linecap="round" opacity="0.9"/>
+    <path d="M77 18C86 33 95 49 103 66" stroke="#111111" stroke-width="2.8" stroke-linecap="round" opacity="0.82"/>
+
+    <!-- Eye -->
+    <path d="M62 90C75 76 91 69 109 69C127 69 143 76 156 90C143 104 127 111 109 111C91 111 75 104 62 90Z" fill="#111111"/>
+    <ellipse cx="109" cy="90" rx="26" ry="18" fill="#F3E8D5"/>
+    <circle cx="109" cy="90" r="10.5" fill="#C99A4B"/>
+    <circle cx="109" cy="90" r="4.8" fill="#111111"/>
+    <circle cx="112.5" cy="86.5" r="1.8" fill="#F3E8D5" opacity="0.9"/>
+
+    <!-- Spotlight beam -->
+    <path d="M95 111L56 248H164L123 111H95Z" fill="url(#spotlight)" filter="url(#softGlow)"/>
+  </g>
+
+  <!-- Wordmark -->
+  <g transform="translate(265 0)">
+    <text x="0" y="160" fill="#F3E8D5" font-size="78" font-family="Georgia, 'Times New Roman', serif" letter-spacing="-1.8">Piletivaht<tspan fill="#C99A4B">.</tspan></text>
+    <text x="2" y="205" fill="#C99A4B" font-size="23" font-family="Arial, Helvetica, sans-serif" font-weight="700" letter-spacing="7">TEATRIPILETITE JÄLGIJA</text>
+  </g>
 </svg>
