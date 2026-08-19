@@ -65,13 +65,17 @@
             aria-label="Vali {{ p.title|e }}"
           >
             <span class="production-graphic">{{ "%02d"|format(loop.index) }}</span>
-            <img
-              class="production-thumb"
-              alt="{{ p.title }}"
-              loading="lazy"
-              decoding="async"
-              style="display:none"
-            >
+            {% if p.display_image_url %}
+              <img
+                class="production-thumb"
+                src="{{ p.display_image_url }}"
+                alt="{{ p.title }}"
+                loading="lazy"
+                decoding="async"
+                onload="this.previousElementSibling.style.display='none'"
+                onerror="this.style.display='none'"
+              >
+            {% endif %}
             <span class="production-content">
               <span class="production-index">Tallinna Linnateater</span>
               <span class="production-title">{{ p.title }}</span>
@@ -109,19 +113,18 @@
       <div id="performance-area" class="picker-msg">Laen etendusi…</div>
 
       <form method="post" action="/trackers" id="tracker-form">
-        <input type="hidden" name="event_url" id="event_url">
-        <input type="hidden" name="event_code" id="event_code">
-        <input type="hidden" name="series_url" id="series_url">
         <input type="hidden" name="title" id="title">
-        <input type="hidden" name="date_text" id="date_text">
         <input type="hidden" name="image_url" id="image_url">
         <input type="hidden" name="production_url" id="production_url">
+        <input type="hidden" name="selected_event_codes" id="selected_event_codes">
 
         <div class="modal-footer">
           <button class="watch-btn" id="submit-btn" disabled>
-            Jälgi seda etendust
+            Vali kuupäev
           </button>
-          <span class="picker-msg" id="selection-msg">Vali kuupäev.</span>
+          <span class="picker-msg" id="selection-msg">
+            Saad valida kuni {{ remaining_slots }} etendust.
+          </span>
         </div>
       </form>
     </div>
@@ -136,6 +139,7 @@
 
   const cards = [...grid.querySelectorAll(".production-card")];
   const search = document.getElementById("production-search");
+  const remainingSlots = {{ remaining_slots|int }};
 
   const modal = document.getElementById("performance-modal");
   const modalClose = document.getElementById("modal-close");
@@ -145,69 +149,55 @@
   const performanceArea = document.getElementById("performance-area");
   const submit = document.getElementById("submit-btn");
   const selectionMsg = document.getElementById("selection-msg");
+  const titleField = document.getElementById("title");
+  const imageField = document.getElementById("image_url");
+  const productionUrlField = document.getElementById("production_url");
+  const selectedCodesField = document.getElementById("selected_event_codes");
 
-  const fields = {
-    event_url: document.getElementById("event_url"),
-    event_code: document.getElementById("event_code"),
-    series_url: document.getElementById("series_url"),
-    title: document.getElementById("title"),
-    date_text: document.getElementById("date_text"),
-    image_url: document.getElementById("image_url"),
-    production_url: document.getElementById("production_url"),
-  };
+  let selected = new Map();
 
-  const imageCache = new Map();
-
-  // Paint the page first. Then fetch all cached/needed image URLs in ONE
-  // background request. The server resolves missing images concurrently and
-  // stores them in PostgreSQL for later visits.
-  setTimeout(async () => {
+  async function getProductionImage(url, cardImage, title) {
+    if (cardImage) return cardImage;
     try {
-      const response = await fetch("/api/production-images");
-      const data = await response.json();
-      if (!response.ok || !data.ok) return;
-
-      cards.forEach(card => {
-        const url = data.images?.[card.dataset.url] || "";
-        if (!url) return;
-
-        imageCache.set(card.dataset.url, url);
-        const img = card.querySelector(".production-thumb");
-        const fallback = card.querySelector(".production-graphic");
-        if (!img) return;
-
-        img.onload = () => {
-          img.style.display = "block";
-          if (fallback) fallback.style.display = "none";
-        };
-        img.src = url;
+      const params = new URLSearchParams({
+        production_url: url,
+        title: title || ""
       });
+      const response = await fetch(
+        "/api/production-image?" + params.toString()
+      );
+      const data = await response.json();
+      return data.ok ? (data.image_url || "") : "";
     } catch {
-      // Repertoire remains fully usable without images.
+      return "";
     }
-  }, 150);
-
-
-async function getProductionImage(url, cardImage) {
-  if (cardImage) return cardImage;
-  if (imageCache.has(url)) return imageCache.get(url);
-
-  try {
-    const params = new URLSearchParams({production_url: url});
-    const r = await fetch("/api/production-image?" + params.toString());
-    const data = await r.json();
-    const image = data.ok ? (data.image_url || "") : "";
-    imageCache.set(url, image);
-    return image;
-  } catch {
-    return "";
   }
-}
 
-  function clearChoice() {
-    Object.values(fields).forEach(el => el.value = "");
-    submit.disabled = true;
-    selectionMsg.textContent = "Vali kuupäev.";
+  function updateSelectionUI() {
+    const count = selected.size;
+    selectedCodesField.value = JSON.stringify([...selected.keys()]);
+
+    if (!count) {
+      submit.disabled = true;
+      submit.textContent = "Vali kuupäev";
+      selectionMsg.textContent =
+        `Saad valida kuni ${remainingSlots} etendust.`;
+      return;
+    }
+
+    submit.disabled = false;
+    submit.textContent = count === 1
+      ? "Jälgi 1 etendust"
+      : `Jälgi ${count} etendust`;
+    selectionMsg.textContent = count === 1
+      ? "1 kuupäev valitud"
+      : `${count} kuupäeva valitud`;
+  }
+
+  function resetSelection() {
+    selected = new Map();
+    selectedCodesField.value = "[]";
+    updateSelectionUI();
   }
 
   function openModal() {
@@ -220,47 +210,58 @@ async function getProductionImage(url, cardImage) {
     modal.classList.remove("open");
     modal.setAttribute("aria-hidden", "true");
     document.body.style.overflow = "";
-    cards.forEach(c => c.classList.remove("active"));
+    cards.forEach(card => card.classList.remove("active"));
+    resetSelection();
   }
 
   modalClose.addEventListener("click", closeModal);
-
-  modal.addEventListener("click", (event) => {
+  modal.addEventListener("click", event => {
     if (event.target === modal) closeModal();
   });
-
-  document.addEventListener("keydown", (event) => {
+  document.addEventListener("keydown", event => {
     if (event.key === "Escape" && modal.classList.contains("open")) {
       closeModal();
     }
   });
 
-  function choosePerformance(button, item, selectedImage) {
-    performanceArea.querySelectorAll(".performance-option")
-      .forEach(el => el.classList.remove("selected"));
+  function togglePerformance(button, item) {
+    const code = item.event_code;
+
+    if (selected.has(code)) {
+      selected.delete(code);
+      button.classList.remove("selected");
+      button.setAttribute("aria-pressed", "false");
+      updateSelectionUI();
+      return;
+    }
+
+    if (selected.size >= remainingSlots) {
+      selectionMsg.textContent =
+        `Sul on ruumi veel ${remainingSlots} jälgimisele.`;
+      return;
+    }
+
+    selected.set(code, item);
     button.classList.add("selected");
-
-    fields.event_url.value = item.event_url;
-    fields.event_code.value = item.event_code;
-    fields.series_url.value = item.series_url;
-    fields.title.value = item.title;
-    fields.date_text.value = item.date_text;
-    fields.image_url.value = item.image_url || selectedImage || "";
-    fields.production_url.value = item.production_url || "";
-
-    submit.disabled = false;
-    selectionMsg.textContent = item.date_text;
+    button.setAttribute("aria-pressed", "true");
+    updateSelectionUI();
   }
 
   async function selectProduction(card) {
     cards.forEach(c => c.classList.remove("active"));
     card.classList.add("active");
-    clearChoice();
+    resetSelection();
 
     const title = card.dataset.title;
     const productionUrl = card.dataset.url;
-    const img = card.querySelector("img");
-    const cardImage = img && img.complete && img.naturalWidth ? img.currentSrc || img.src : (img?.src || "");
+    const img = card.querySelector(".production-thumb");
+    const cardImage = img && img.complete && img.naturalWidth
+      ? (img.currentSrc || img.src)
+      : (img?.src || "");
+
+    titleField.value = title;
+    productionUrlField.value = productionUrl;
+    imageField.value = cardImage || "";
 
     modalName.textContent = title;
     modalImage.style.display = "none";
@@ -269,26 +270,32 @@ async function getProductionImage(url, cardImage) {
     performanceArea.textContent = "Laen Piletilevist etendusi…";
     openModal();
 
-    const selectedImage = await getProductionImage(productionUrl, cardImage, title);
-    if (selectedImage) {
-      modalImage.src = selectedImage;
+    // Image lookup never blocks the faster Piletilevi date request.
+    getProductionImage(productionUrl, cardImage, title).then(image => {
+      imageField.value = image || "";
+      if (!image) return;
+      modalImage.src = image;
       modalImage.alt = title;
       modalImage.onload = () => {
         modalFallback.style.display = "none";
         modalImage.style.display = "block";
       };
-    }
+    });
 
     try {
       const params = new URLSearchParams({
         title: title,
         production_url: productionUrl
       });
-      const response = await fetch("/api/performances?" + params.toString());
+      const response = await fetch(
+        "/api/performances?" + params.toString()
+      );
       const data = await response.json();
 
       if (!response.ok || !data.ok) {
-        throw new Error(data.error || "Etenduste laadimine ebaõnnestus.");
+        throw new Error(
+          data.error || "Etenduste laadimine ebaõnnestus."
+        );
       }
 
       performanceArea.className = "performance-list";
@@ -298,17 +305,17 @@ async function getProductionImage(url, cardImage) {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "performance-option";
+        button.setAttribute("aria-pressed", "false");
         button.innerHTML = `
           <span class="perf-date">${item.date_text}</span>
           <span class="perf-status">${item.status}</span>
         `;
         button.addEventListener(
           "click",
-          () => choosePerformance(button, item, selectedImage)
+          () => togglePerformance(button, item)
         );
         performanceArea.appendChild(button);
       });
-
     } catch (error) {
       performanceArea.className = "picker-msg";
       performanceArea.textContent = error.message;

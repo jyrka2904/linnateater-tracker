@@ -249,6 +249,11 @@
     .performance-option:hover{border-color:#fff}
     .performance-option.selected{
       background:var(--red);border-color:var(--red);
+      box-shadow:inset 0 0 0 2px var(--red);
+    }
+    .performance-option.selected:after{
+      content:"✓ VALITUD";
+      font-size:9px;letter-spacing:.12em;font-weight:900;margin-top:8px;
     }
     .perf-date{font-size:17px;font-weight:900;letter-spacing:-.025em}
     .perf-status{
