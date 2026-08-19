@@ -269,7 +269,7 @@ async function getProductionImage(url, cardImage) {
     performanceArea.textContent = "Laen Piletilevist etendusi…";
     openModal();
 
-    const selectedImage = await getProductionImage(productionUrl, cardImage);
+    const selectedImage = await getProductionImage(productionUrl, cardImage, title);
     if (selectedImage) {
       modalImage.src = selectedImage;
       modalImage.alt = title;
