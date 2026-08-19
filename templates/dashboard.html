@@ -105,11 +105,12 @@
   {% for t in trackers %}
   <article class="tracker">
     <div class="tracker-image">
+      <div class="fallback">LT</div>
       {% if t.image_url %}
         <img src="{{ t.image_url }}" alt="{{ t.title }}"
+             onload="this.previousElementSibling.style.display='none'"
              onerror="this.style.display='none'">
       {% endif %}
-      <div class="fallback">LT</div>
     </div>
 
     <div class="tracker-body">
