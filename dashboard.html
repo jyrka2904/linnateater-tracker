@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="top">
+  <div>
+    <div class="brand">Linnateater <span>Tracker</span></div>
+    <div class="muted">Piletite saadavuse SMS-teavitused</div>
+  </div>
+  <form method="post" action="/logout"><button class="secondary">Logi välja</button></form>
+</div>
+
+{% for category,message in get_flashed_messages(with_categories=true) %}
+  <div class="flash {{ category }}">{{ message }}</div>
+{% endfor %}
+
+<div class="card">
+  <h2 style="margin-top:0">Lisa jälgimine</h2>
+  <p class="muted">
+    Ava Piletilevis konkreetne Linnateatri etendus ja kleebi selle link siia.
+    Kui müüki tekib pilet, saad SMS-i koos ostulingiga.
+  </p>
+  {% if can_add %}
+  <form method="post" action="/trackers">
+    <div class="row">
+      <div class="grow">
+        <label>Piletilevi etenduse link</label>
+        <input name="event_url"
+               placeholder="https://www.piletilevi.ee/piletid/..."
+               required>
+      </div>
+      <button>Alusta jälgimist</button>
+    </div>
+  </form>
+  {% else %}
+  <div class="flash">Sul on {{ max_trackers }} aktiivset jälgimist.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Aktiivsed jälgimised</h2>
+  {% if trackers %}
+    {% for t in trackers %}
+    <div class="tracker">
+      <div>
+        <div class="title">{{ t.title }}</div>
+        <div class="meta">{{ t.date_text or t.event_code }}</div>
+
+        {% if t.last_error %}
+          <div class="status err">Viimane kontroll: viga — {{ t.last_error }}</div>
+        {% elif t.last_checked_at %}
+          <div class="status ok">
+            Jälgimine aktiivne · {{ t.last_status or "kontrollitud" }}
+            · {{ t.last_checked_at.strftime("%d.%m.%Y %H:%M:%S") }}
+          </div>
+        {% else %}
+          <div class="status">Jälgimine aktiivne · esimene kontroll on tulemas</div>
+        {% endif %}
+
+        <div class="meta">
+          <a href="{{ t.event_url }}" target="_blank" rel="noopener">Ava Piletilevis ↗</a>
+        </div>
+      </div>
+      <form method="post" action="/trackers/{{ t.id }}/delete">
+        <button class="danger">Eemalda</button>
+      </form>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="muted">Sul ei ole praegu aktiivseid jälgimisi.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <strong>Kuidas see töötab?</strong>
+  <p class="muted" style="margin-bottom:0">
+    Worker kontrollib aktiivseid etendusi iga 15–30 sekundi järel.
+    Kui Piletilevi konkreetse etenduse juurest kaob „Välja müüdud” staatus,
+    saadab süsteem Twilio SMS-i ja eemaldab selle jälgimise automaatselt.
+  </p>
+</div>
+{% endblock %}

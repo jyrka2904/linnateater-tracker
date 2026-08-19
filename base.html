@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="et">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}Linnateater Tracker{% endblock %}</title>
+  <style>
+    :root{--bg:#f4f2ee;--card:#fff;--ink:#18202a;--muted:#707780;--accent:#b61f2b;--line:#e7e1da;--ok:#227a4b}
+    *{box-sizing:border-box} body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+    .wrap{max-width:980px;margin:0 auto;padding:28px 20px 60px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:26px}
+    .brand{font-weight:800;font-size:24px}.brand span{color:var(--accent)} .muted{color:var(--muted)}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;margin-bottom:18px;box-shadow:0 8px 28px rgba(0,0,0,.035)}
+    input,button{font:inherit} input{width:100%;padding:13px 14px;border-radius:10px;border:1px solid #d8d2cc;background:#fff}
+    button,.btn{border:0;border-radius:10px;padding:12px 16px;background:var(--accent);color:white;font-weight:700;cursor:pointer;text-decoration:none}
+    .secondary{background:#eee9e3;color:#332f2b}.danger{background:#f6e5e7;color:#9a1722}.row{display:flex;gap:12px;align-items:end}.grow{flex:1}
+    label{display:block;font-size:13px;font-weight:700;margin:0 0 7px}.flash{padding:13px 15px;border-radius:10px;margin-bottom:14px;background:#f8e8ea;color:#861822}
+    .flash.success{background:#e8f4ed;color:#195f3a}.tracker{display:grid;grid-template-columns:1fr auto;gap:14px;padding:16px 0;border-top:1px solid var(--line)}
+    .tracker:first-of-type{border-top:0}.title{font-weight:800}.meta{font-size:14px;color:var(--muted);margin-top:5px}.status{font-size:13px;margin-top:7px}
+    .ok{color:var(--ok)}.err{color:#a51c28}.auth{max-width:430px;margin:80px auto}.auth h1{margin-top:0}
+    @media(max-width:700px){.row{display:block}.row button{width:100%;margin-top:10px}.tracker{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  {% block body %}{% endblock %}
+</div>
+</body>
+</html>

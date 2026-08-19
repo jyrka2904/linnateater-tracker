@@ -1,0 +1,42 @@
+import os
+import psycopg
+from psycopg.rows import dict_row
+
+DATABASE_URL = os.environ["DATABASE_URL"]
+
+
+def get_conn():
+    return psycopg.connect(DATABASE_URL, row_factory=dict_row)
+
+
+def init_db():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id BIGSERIAL PRIMARY KEY,
+                    phone_number TEXT UNIQUE NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS trackers (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    title TEXT NOT NULL,
+                    date_text TEXT,
+                    event_url TEXT NOT NULL,
+                    series_url TEXT NOT NULL,
+                    event_code TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    last_checked_at TIMESTAMPTZ,
+                    last_available BOOLEAN,
+                    last_status TEXT,
+                    last_error TEXT,
+                    UNIQUE(user_id, event_code)
+                )
+                """
+            )

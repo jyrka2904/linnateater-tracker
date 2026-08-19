@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Logi sisse · Linnateater Tracker{% endblock %}
+{% block body %}
+<div class="auth card">
+  <div class="brand">Linnateater <span>Tracker</span></div>
+  <h1>Logi telefoniga sisse</h1>
+  <p class="muted">Saadame Twilio kaudu ühekordse kinnituskoodi.</p>
+  {% for category,message in get_flashed_messages(with_categories=true) %}
+    <div class="flash {{ category }}">{{ message }}</div>
+  {% endfor %}
+  <form method="post">
+    <label>Telefoninumber</label>
+    <input name="phone" placeholder="+372..." required>
+    <button style="width:100%;margin-top:12px">Saada kood</button>
+  </form>
+</div>
+{% endblock %}
