@@ -5,6 +5,7 @@ from functools import wraps
 from flask import (
     Flask,
     flash,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -14,7 +15,7 @@ from flask import (
 from twilio.rest import Client
 
 from db import get_conn, init_db
-from ticket_source import resolve_event
+from ticket_source import list_performances, list_productions
 
 
 app = Flask(__name__)
@@ -25,7 +26,6 @@ TWILIO_AUTH_TOKEN = os.environ["TWILIO_AUTH_TOKEN"]
 TWILIO_VERIFY_SERVICE_SID = os.environ["TWILIO_VERIFY_SERVICE_SID"]
 
 twilio = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-
 MAX_TRACKERS = int(os.environ.get("MAX_TRACKERS", "10"))
 
 
@@ -76,10 +76,7 @@ def login():
             phone = normalize_phone(request.form.get("phone", ""))
             twilio.verify.v2.services(
                 TWILIO_VERIFY_SERVICE_SID
-            ).verifications.create(
-                to=phone,
-                channel="sms",
-            )
+            ).verifications.create(to=phone, channel="sms")
             session["pending_phone"] = phone
             return redirect(url_for("verify"))
         except Exception as e:
@@ -98,10 +95,8 @@ def verify():
         try:
             check = twilio.verify.v2.services(
                 TWILIO_VERIFY_SERVICE_SID
-            ).verification_checks.create(
-                to=phone,
-                code=code,
-            )
+            ).verification_checks.create(to=phone, code=code)
+
             if check.status != "approved":
                 flash("Kood ei olnud õige.", "error")
                 return render_template("verify.html", phone=phone)
@@ -140,6 +135,7 @@ def logout():
 @login_required
 def dashboard():
     user = current_user()
+
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -153,13 +149,38 @@ def dashboard():
             )
             trackers = cur.fetchall()
 
+    try:
+        productions = list_productions()
+        productions_error = None
+    except Exception as e:
+        productions = []
+        productions_error = str(e)
+
     return render_template(
         "dashboard.html",
         user=user,
         trackers=trackers,
+        productions=productions,
+        productions_error=productions_error,
         max_trackers=MAX_TRACKERS,
         can_add=len(trackers) < MAX_TRACKERS,
     )
+
+
+@app.get("/api/performances")
+@login_required
+def api_performances():
+    title = (request.args.get("title") or "").strip()
+    production_url = (request.args.get("production_url") or "").strip()
+
+    if not title or not production_url:
+        return jsonify({"ok": False, "error": "Lavastus puudub."}), 400
+
+    try:
+        items = list_performances(title, production_url)
+        return jsonify({"ok": True, "performances": items})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
 
 
 @app.post("/trackers")
@@ -177,42 +198,51 @@ def add_tracker():
                 flash("Aktiivsete jälgimiste limiit on täis.", "error")
                 return redirect(url_for("dashboard"))
 
-    try:
-        info = resolve_event(request.form.get("event_url", ""))
+    event_url = (request.form.get("event_url") or "").strip()
+    event_code = (request.form.get("event_code") or "").strip().upper()
+    series_url = (request.form.get("series_url") or "").strip()
+    title = (request.form.get("title") or "").strip()
+    date_text = (request.form.get("date_text") or "").strip()
+    image_url = (request.form.get("image_url") or "").strip()
+    production_url = (request.form.get("production_url") or "").strip()
 
+    if not all([event_url, event_code, series_url, title, date_text]):
+        flash("Etenduse info oli puudulik. Vali etendus uuesti.", "error")
+        return redirect(url_for("dashboard"))
+
+    try:
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
                     INSERT INTO trackers (
                         user_id, title, date_text, event_url,
-                        series_url, event_code
+                        series_url, event_code, image_url, production_url
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id, event_code) DO NOTHING
                     RETURNING id
                     """,
                     (
                         user["id"],
-                        info.title,
-                        info.date_text,
-                        info.event_url,
-                        info.series_url,
-                        info.event_code,
+                        title,
+                        date_text,
+                        event_url,
+                        series_url,
+                        event_code,
+                        image_url,
+                        production_url,
                     ),
                 )
                 row = cur.fetchone()
 
         if row:
-            flash(
-                f"Jälgimine lisatud: {info.title} {info.date_text}".strip(),
-                "success",
-            )
+            flash(f"Jälgimine lisatud: {title} · {date_text}", "success")
         else:
             flash("Seda etendust sa juba jälgid.", "error")
 
     except Exception as e:
-        flash(f"Etendust ei saanud lisada: {e}", "error")
+        flash(f"Jälgimist ei saanud lisada: {e}", "error")
 
     return redirect(url_for("dashboard"))
 

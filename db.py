@@ -31,6 +31,8 @@ def init_db():
                     event_url TEXT NOT NULL,
                     series_url TEXT NOT NULL,
                     event_code TEXT NOT NULL,
+                    image_url TEXT,
+                    production_url TEXT,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     last_checked_at TIMESTAMPTZ,
                     last_available BOOLEAN,
@@ -39,4 +41,12 @@ def init_db():
                     UNIQUE(user_id, event_code)
                 )
                 """
+            )
+
+            # Safe migration from v1.
+            cur.execute(
+                "ALTER TABLE trackers ADD COLUMN IF NOT EXISTS image_url TEXT"
+            )
+            cur.execute(
+                "ALTER TABLE trackers ADD COLUMN IF NOT EXISTS production_url TEXT"
             )

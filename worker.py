@@ -11,7 +11,6 @@ from ticket_source import check_event
 
 
 TZ = ZoneInfo("Europe/Tallinn")
-
 MIN_WAIT = int(os.environ.get("MIN_WAIT_SECONDS", "15"))
 MAX_WAIT = int(os.environ.get("MAX_WAIT_SECONDS", "30"))
 
@@ -29,9 +28,7 @@ def get_trackers():
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT
-                    t.*,
-                    u.phone_number
+                SELECT t.*, u.phone_number
                 FROM trackers t
                 JOIN users u ON u.id=t.user_id
                 ORDER BY t.id
@@ -63,9 +60,7 @@ def mark_error(tid, error):
             cur.execute(
                 """
                 UPDATE trackers
-                SET
-                    last_checked_at=NOW(),
-                    last_error=%s
+                SET last_checked_at=NOW(), last_error=%s
                 WHERE id=%s
                 """,
                 (str(error)[:900], tid),
@@ -73,11 +68,10 @@ def mark_error(tid, error):
 
 
 def build_sms(t):
-    date_line = f"\n{t['date_text']}" if t.get("date_text") else ""
     return (
         "🎭 Linnateatri pilet on saadaval!\n"
-        f"{t['title']}"
-        f"{date_line}\n\n"
+        f"{t['title']}\n"
+        f"{t['date_text']}\n\n"
         "Osta kohe:\n"
         f"{t['event_url']}\n\n"
         "Jälgimine eemaldati automaatselt."
@@ -99,10 +93,7 @@ def send_and_remove(t):
         with conn.cursor() as cur:
             cur.execute("DELETE FROM trackers WHERE id=%s", (t["id"],))
 
-    print(
-        f"🗑 Tracker #{t['id']} removed after alert.",
-        flush=True,
-    )
+    print(f"🗑 Tracker #{t['id']} removed after alert.", flush=True)
 
 
 def run_cycle():
@@ -125,8 +116,7 @@ def run_cycle():
             update_result(t["id"], available, status)
 
             print(
-                f"→ #{t['id']} | {t['title']} | "
-                f"{t.get('date_text') or t['event_code']} | {status}",
+                f"→ #{t['id']} | {t['title']} | {t['date_text']} | {status}",
                 flush=True,
             )
 
