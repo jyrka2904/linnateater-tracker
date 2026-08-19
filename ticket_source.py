@@ -191,6 +191,62 @@ def page_image(url: str) -> str:
     return _cached("image:" + url, 1800, build)
 
 
+def _image_from_node(node, base_url: str):
+    """
+    Extract an image already present in the production-list card markup.
+    This avoids opening every individual production page.
+    """
+    if node is None:
+        return ""
+
+    # Prefer image elements inside the card/link.
+    img = node.find("img")
+    if img:
+        for attr in ("src", "data-src", "data-lazy-src", "data-original"):
+            value = img.get(attr)
+            if value and not value.startswith("data:"):
+                return urljoin(base_url, value)
+
+        srcset = img.get("srcset") or img.get("data-srcset")
+        if srcset:
+            # Usually the last candidate is the largest.
+            candidates = []
+            for part in srcset.split(","):
+                value = part.strip().split(" ")[0]
+                if value:
+                    candidates.append(value)
+            if candidates:
+                return urljoin(base_url, candidates[-1])
+
+    # Background-image fallback.
+    style = node.get("style") or ""
+    m = re.search(r'url\((["\']?)(.*?)\1\)', style, flags=re.I)
+    if m and m.group(2):
+        return urljoin(base_url, m.group(2))
+
+    # Look one level up; some sites place the image beside the anchor text.
+    parent = getattr(node, "parent", None)
+    if parent is not None:
+        img = parent.find("img")
+        if img:
+            for attr in ("src", "data-src", "data-lazy-src", "data-original"):
+                value = img.get(attr)
+                if value and not value.startswith("data:"):
+                    return urljoin(base_url, value)
+
+            srcset = img.get("srcset") or img.get("data-srcset")
+            if srcset:
+                candidates = [
+                    part.strip().split(" ")[0]
+                    for part in srcset.split(",")
+                    if part.strip()
+                ]
+                if candidates:
+                    return urljoin(base_url, candidates[-1])
+
+    return ""
+
+
 def list_productions():
     def build():
         html = _get(LINNATEATER_PRODUCTIONS).text
@@ -225,6 +281,7 @@ def list_productions():
                     "title": title,
                     "production_url": href,
                     "slug": slug,
+                    "image_url": _image_from_node(a, LINNATEATER_PRODUCTIONS),
                 }
 
         return sorted(found.values(), key=lambda x: x["title"].casefold())

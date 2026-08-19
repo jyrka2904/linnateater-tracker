@@ -1,30 +1,43 @@
-# Linnateater Tracker v6
+# Linnateater Tracker v7
 
-Built on v5.
+Built on v6.
 
-## Performance fix
+## Repertoire images without lag
 
-The repertoire gallery no longer requests an image for every production.
-Production cards are lightweight HTML/CSS only.
+v7 no longer opens each individual production page to discover card images.
 
-A production image is requested only AFTER the user selects that production,
-and it is then shown in the performance picker. Active tracker cards continue
-to use their already stored image.
+Instead, `list_productions()` extracts a thumbnail from the SAME Linnateater
+repertoire HTML request that is already used to get the production names.
 
-This removes dozens of unnecessary external Linnateater requests and makes the
-dashboard substantially lighter.
+The browser then loads those direct image URLs with:
 
-## Availability fix
+    loading="lazy"
+    decoding="async"
 
-Piletilevi event detail pages are NOT used as the source of truth for sold-out
-state. A sold-out event page may still render normally.
+So:
+- no extra Flask API request per production card;
+- no extra Linnateater HTML request per production card;
+- images still appear in the repertoire;
+- only images near the viewport are downloaded by the browser.
 
-v6 reads availability from the exact event row on the Piletilevi SERIES page,
-matched by the unique Piletilevi event code.
+If a production card does not expose a thumbnail in the repertoire HTML, the
+app shows a lightweight fallback card. When the user selects that production,
+one production-image request is allowed to fetch the full image.
 
-The worker uses the same rule. If it cannot confidently locate the event/status
-on the series page, it records an error instead of sending a false-positive SMS.
+## Modal performance picker
+
+Clicking a production now opens a fixed modal/pop-up.
+
+Inside the modal:
+- large production image;
+- exact Piletilevi performance dates/times;
+- current availability;
+- "Jälgi seda etendust" action.
+
+The user no longer has to scroll past the full production gallery to find the
+date picker.
 
 ## Deploy
 
-Replace v5 files with this ZIP. Railway/PostgreSQL/Twilio settings stay the same.
+Replace v6 repository files with v7. Railway, PostgreSQL and Twilio settings do
+not change.
