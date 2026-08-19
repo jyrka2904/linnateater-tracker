@@ -1,19 +1,45 @@
 {% extends "base.html" %}
 {% block title %}Logi sisse · Linnateater Tracker{% endblock %}
-{% block body %}
-<div class="auth">
-  <div class="wordmark"><span class="mark">L</span> Linnateater Tracker</div>
-  <h1>Piletid ei pea jääma saamata.</h1>
-  <p class="intro">Logi telefoninumbriga sisse. Saadame Twilio kaudu ühekordse SMS-koodi.</p>
+{% block layout %}
+<div class="auth-page">
+  <section class="auth-art">
+    <a class="logo" href="/login"><span class="logo-mark">L</span> Linnateater Tracker</a>
+    <h1>Pilet võib tekkida hetkega.</h1>
+    <p class="auth-caption">Mitteametlik Linnateatri piletijälgija. Sina valid etenduse, meie hoiame saadavusel silma peal.</p>
+  </section>
+  <section class="auth-panel">
+    <div class="auth-box">
+      <div class="auth-kicker">Tere tulemast tagasi</div>
+      <h2>Logi sisse.</h2>
+      <p class="auth-copy">Telefoninumber on sinu kasutajanimi. SMS-koodi tavalisel sisselogimisel enam vaja ei ole.</p>
 
-  {% for category,message in get_flashed_messages(with_categories=true) %}
-    <div class="flash {{ category }}">{{ message }}</div>
-  {% endfor %}
+      <div class="auth-flashes">
+      {% for category,message in get_flashed_messages(with_categories=true) %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+      </div>
 
-  <form method="post">
-    <label>Telefoninumber</label>
-    <input name="phone" placeholder="+372..." required>
-    <button class="primary">Saada kood</button>
-  </form>
+      <form method="post">
+        <div class="field">
+          <label>Telefoninumber</label>
+          <input name="phone" value="{{ phone or '' }}" placeholder="+372..." autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label>Parool</label>
+          <input name="password" type="password" autocomplete="current-password" required>
+        </div>
+        <label class="check-row">
+          <input type="checkbox" name="remember" value="1" checked>
+          Hoia mind selles seadmes sisse logituna
+        </label>
+        <button class="auth-primary">Logi sisse</button>
+      </form>
+
+      <div class="auth-links">
+        <a href="/signup">Loo konto</a>
+        <a href="/forgot-password">Unustasid parooli?</a>
+      </div>
+    </div>
+  </section>
 </div>
 {% endblock %}

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Loo konto · Linnateater Tracker{% endblock %}
+{% block layout %}
+<div class="auth-page">
+  <section class="auth-art">
+    <a class="logo" href="/login"><span class="logo-mark">L</span> Linnateater Tracker</a>
+    <h1>Üks SMS. Siis piisab paroolist.</h1>
+    <p class="auth-caption">Kinnitame sinu telefoninumbri konto loomisel ühe korra. Edaspidi logid sisse telefoninumbri ja enda valitud parooliga.</p>
+  </section>
+  <section class="auth-panel">
+    <div class="auth-box">
+      <div class="auth-kicker">Uus kasutaja</div>
+      <h2>Loo konto.</h2>
+      <p class="auth-copy">Telefoninumber on sinu kasutajanimi ja sinna saadame ka pileti vabanemise teavitused.</p>
+
+      <div class="auth-flashes">
+      {% for category,message in get_flashed_messages(with_categories=true) %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+      </div>
+
+      <form method="post">
+        <div class="field">
+          <label>Telefoninumber</label>
+          <input name="phone" placeholder="+372..." autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label>Parool</label>
+          <input name="password" type="password" minlength="8" autocomplete="new-password" required>
+        </div>
+        <div class="field">
+          <label>Korda parooli</label>
+          <input name="password2" type="password" minlength="8" autocomplete="new-password" required>
+        </div>
+        <button class="auth-primary">Kinnita telefon ja loo konto</button>
+      </form>
+
+      <div class="auth-links">
+        <a href="/login">Mul on juba konto</a>
+        <a href="/activate">Kasutasin varasemat versiooni</a>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

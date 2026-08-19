@@ -1,172 +1,192 @@
 {% extends "base.html" %}
+{% block title %}Jälgimised · Linnateater Tracker{% endblock %}
 {% block body %}
-<header class="header">
-  <div class="wordmark"><span class="mark">L</span> Linnateater Tracker</div>
-  <div class="header-right">
-    <div class="phone">{{ user.phone_number }}</div>
-    <form method="post" action="/logout"><button class="ghost">Logi välja</button></form>
+<header class="topbar">
+  <a class="logo" href="/dashboard"><span class="logo-mark">L</span> Linnateater Tracker</a>
+  <div class="top-actions">
+    <span class="account-label">{{ user.phone_number }}</span>
+    <form method="post" action="/logout">
+      <button class="nav-btn">Logi välja</button>
+    </form>
   </div>
 </header>
 
-<section class="hero">
-  <div>
-    <div class="eyebrow">Tallinna Linnateater · pileti jälgija</div>
-    <h1>Oota piletit.<br>Mitte lehel.</h1>
-  </div>
-  <p class="hero-copy">
-    Vali lavastus ja konkreetne etendus. Kontrollime Piletilevi saadavust
-    automaatselt ning saadame SMS-i kohe, kui pilet tekib.
-  </p>
-</section>
-
-{% for category,message in get_flashed_messages(with_categories=true) %}
-  <div class="flash {{ category }}">{{ message }}</div>
-{% endfor %}
-
-<div class="grid">
-  <section class="panel red">
-    <h2>Lisa uus jälgimine</h2>
-    <p class="intro">
-      Enam ei ole vaja Piletilevi linki otsida. Vali kõigepealt lavastus,
-      seejärel sobiv kuupäev ja kellaaeg.
+<main class="main">
+  <section class="hero">
+    <div>
+      <div class="kicker">Mitteametlik pileti jälgija</div>
+      <h1>Ära värskenda.<br>Meie jälgime.</h1>
+    </div>
+    <p class="hero-copy">
+      Vali <strong>Linnateatri lavastus</strong> ja konkreetne etendus.
+      Kui Piletilevis tekib koht, saadame sulle kohe SMS-i.
     </p>
+  </section>
+
+  <div class="flash-stack">
+    {% for category,message in get_flashed_messages(with_categories=true) %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  </div>
+
+  <section class="section" id="repertuaar">
+    <div class="section-title-row">
+      <div>
+        <div class="kicker">01 · Repertuaar</div>
+        <h2 class="section-title">Millist lavastust ootad?</h2>
+      </div>
+      <div class="section-note">
+        Vali lavastus pildilt. Seejärel näitame kõiki Piletilevist leitud
+        tulevasi kuupäevi ja kellaaegu.
+      </div>
+    </div>
 
     {% if productions_error %}
-      <div class="flash error">Lavastuste laadimine ebaõnnestus: {{ productions_error }}</div>
+      <div class="flash error">{{ productions_error }}</div>
     {% endif %}
 
     {% if can_add and productions %}
-    <form method="post" action="/trackers" id="tracker-form">
-      <div class="step">
-        <label for="production-select">1. Lavastus</label>
-        <select id="production-select">
-          <option value="">Vali lavastus</option>
-          {% for p in productions %}
-            <option
-              value="{{ p.production_url }}"
-              data-title="{{ p.title }}"
-            >{{ p.title }}</option>
-          {% endfor %}
-        </select>
+      <div class="search-row">
+        <input class="search" id="production-search"
+               placeholder="Otsi lavastust…" autocomplete="off">
       </div>
 
-      <div class="step">
-        <label>2. Kuupäev ja kellaaeg</label>
-        <div id="performance-area" class="loading">
-          Vali kõigepealt lavastus.
+      <div class="production-grid" id="production-grid">
+        {% for p in productions %}
+          <button
+            type="button"
+            class="production-card"
+            data-title="{{ p.title|e }}"
+            data-url="{{ p.production_url|e }}"
+            aria-label="Vali {{ p.title|e }}"
+          >
+            <span class="image-skeleton"></span>
+            <span class="production-content">
+              <span class="production-index">{{ "%02d"|format(loop.index) }}</span>
+              <span class="production-title">{{ p.title }}</span>
+            </span>
+          </button>
+        {% endfor %}
+      </div>
+
+      <div class="picker" id="picker">
+        <div class="picker-visual">
+          <div class="image-skeleton"></div>
+          <img id="picker-image" alt="" style="display:none">
+          <div class="picker-name" id="picker-name"></div>
+        </div>
+        <div class="picker-body">
+          <div class="picker-label">02 · Vali etendus</div>
+          <div id="performance-area" class="picker-msg">
+            Laen etendusi…
+          </div>
+
+          <form method="post" action="/trackers" id="tracker-form">
+            <input type="hidden" name="event_url" id="event_url">
+            <input type="hidden" name="event_code" id="event_code">
+            <input type="hidden" name="series_url" id="series_url">
+            <input type="hidden" name="title" id="title">
+            <input type="hidden" name="date_text" id="date_text">
+            <input type="hidden" name="image_url" id="image_url">
+            <input type="hidden" name="production_url" id="production_url">
+
+            <div class="picker-footer">
+              <button class="watch-btn" id="submit-btn" disabled>
+                Jälgi seda etendust
+              </button>
+              <span class="picker-msg" id="selection-msg">
+                Vali kuupäev.
+              </span>
+            </div>
+          </form>
         </div>
       </div>
-
-      <input type="hidden" name="event_url" id="event_url">
-      <input type="hidden" name="event_code" id="event_code">
-      <input type="hidden" name="series_url" id="series_url">
-      <input type="hidden" name="title" id="title">
-      <input type="hidden" name="date_text" id="date_text">
-      <input type="hidden" name="image_url" id="image_url">
-      <input type="hidden" name="production_url" id="production_url">
-
-      <button class="primary" id="submit-btn" disabled>
-        Lisa jälgimisse
-      </button>
-    </form>
     {% elif not can_add %}
-      <div class="flash">Sul on {{ max_trackers }} aktiivset jälgimist.</div>
+      <div class="empty-state">
+        Sul on {{ max_trackers }} aktiivset jälgimist. Eemalda üks, et uus lisada.
+      </div>
     {% endif %}
   </section>
 
-  <aside class="panel">
-    <h2>Jälgimine</h2>
-    <p class="intro">Töötab automaatselt taustal.</p>
-
-    <div class="side-stat">
-      <div class="big-number">15–30</div>
-      <div class="small">sekundit kontrollide vahel</div>
-    </div>
-    <div class="side-stat">
-      <div class="big-number">{{ trackers|length }}</div>
-      <div class="small">aktiivset jälgimist praegu</div>
-    </div>
-    <div class="side-stat">
-      <div class="small">
-        Kui pilet tekib, saad kohe Twilio SMS-i koos otsese ostulingiga.
-        Pärast edukat teavitust eemaldatakse jälgimine automaatselt.
-      </div>
-    </div>
-  </aside>
-</div>
-
-<div class="section-head">
-  <h2>Aktiivsed jälgimised</h2>
-  <div class="count">{{ trackers|length }} / {{ max_trackers }}</div>
-</div>
-
-{% if trackers %}
-<div class="trackers">
-  {% for t in trackers %}
-  <article class="tracker">
-    <div class="tracker-image">
-      <div class="fallback">LT</div>
-      {% if t.image_url %}
-        <img src="{{ t.image_url }}" alt="{{ t.title }}"
-             onload="this.previousElementSibling.style.display='none'"
-             onerror="this.style.display='none'">
-      {% endif %}
-    </div>
-
-    <div class="tracker-body">
+  <section class="section">
+    <div class="section-title-row">
       <div>
-        <h3 class="tracker-title">{{ t.title }}</h3>
-        <div class="date">{{ t.date_text or t.event_code }}</div>
-
-        {% if t.last_error %}
-          <div class="state error-text">
-            <span class="dot error"></span>
-            Kontrolli viga
-          </div>
-          <div class="small" style="margin-top:7px">{{ t.last_error }}</div>
-        {% elif t.last_checked_at %}
-          <div class="state">
-            <span class="dot"></span>
-            Jälgimine aktiivne
-          </div>
-          <div class="small" style="margin-top:7px">
-            {{ t.last_status or "Kontrollitud" }} ·
-            {{ t.last_checked_at.strftime("%d.%m.%Y %H:%M:%S") }}
-          </div>
-        {% else %}
-          <div class="state">
-            <span class="dot"></span>
-            Jälgimine aktiivne
-          </div>
-          <div class="small" style="margin-top:7px">Esimene kontroll on tulemas</div>
-        {% endif %}
+        <div class="kicker">02 · Jälgimisel</div>
+        <h2 class="section-title">Aktiivsed etendused</h2>
       </div>
-
-      <div class="tracker-actions">
-        <a class="buy-link" href="{{ t.event_url }}" target="_blank" rel="noopener">
-          Ava Piletilevis ↗
-        </a>
-        <form method="post" action="/trackers/{{ t.id }}/delete">
-          <button class="delete">Eemalda</button>
-        </form>
+      <div class="section-note">
+        {{ trackers|length }} / {{ max_trackers }} aktiivset ·
+        kontroll iga 15–30 sekundi järel.
       </div>
     </div>
-  </article>
-  {% endfor %}
-</div>
-{% else %}
-<div class="panel">
-  <p class="intro" style="margin:0">Ühtegi aktiivset jälgimist ei ole.</p>
-</div>
-{% endif %}
+
+    {% if trackers %}
+      <div class="tracker-grid">
+        {% for t in trackers %}
+          <article class="tracker-card">
+            {% if t.image_url %}
+              <img src="{{ t.image_url }}" alt="{{ t.title }}">
+            {% endif %}
+            <div class="tracker-inner">
+              {% if t.last_error %}
+                <div class="status-pill">
+                  <span class="status-dot error"></span> Kontrolli viga
+                </div>
+              {% else %}
+                <div class="status-pill">
+                  <span class="status-dot"></span> Jälgimine aktiivne
+                </div>
+              {% endif %}
+
+              <div>
+                <h3 class="tracker-title">{{ t.title }}</h3>
+                <div class="tracker-date">{{ t.date_text or t.event_code }}</div>
+
+                {% if t.last_error %}
+                  <div class="tracker-meta">{{ t.last_error }}</div>
+                {% elif t.last_checked_at %}
+                  <div class="tracker-meta">
+                    {{ t.last_status or "Kontrollitud" }} ·
+                    {{ t.last_checked_at.strftime("%d.%m.%Y %H:%M:%S") }}
+                  </div>
+                {% else %}
+                  <div class="tracker-meta">Esimene kontroll on tulemas</div>
+                {% endif %}
+
+                <div class="tracker-actions">
+                  <a class="external" href="{{ t.event_url }}"
+                     target="_blank" rel="noopener">Piletilevi ↗</a>
+                  <form method="post" action="/trackers/{{ t.id }}/delete">
+                    <button class="remove">Eemalda</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">
+        Veel ei jälgi ühtegi etendust. Vali repertuaarist esimene.
+      </div>
+    {% endif %}
+  </section>
+</main>
 
 <script>
 (() => {
-  const production = document.getElementById("production-select");
-  if (!production) return;
+  const grid = document.getElementById("production-grid");
+  if (!grid) return;
 
-  const area = document.getElementById("performance-area");
+  const cards = [...grid.querySelectorAll(".production-card")];
+  const search = document.getElementById("production-search");
+  const picker = document.getElementById("picker");
+  const pickerName = document.getElementById("picker-name");
+  const pickerImage = document.getElementById("picker-image");
+  const performanceArea = document.getElementById("performance-area");
   const submit = document.getElementById("submit-btn");
+  const selectionMsg = document.getElementById("selection-msg");
+
   const fields = {
     event_url: document.getElementById("event_url"),
     event_code: document.getElementById("event_code"),
@@ -177,13 +197,61 @@
     production_url: document.getElementById("production_url"),
   };
 
-  function clearChoice() {
-    Object.values(fields).forEach(el => el.value = "");
-    submit.disabled = true;
+  const imageCache = new Map();
+
+  async function getProductionImage(url) {
+    if (imageCache.has(url)) return imageCache.get(url);
+    try {
+      const params = new URLSearchParams({production_url: url});
+      const r = await fetch("/api/production-image?" + params.toString());
+      const data = await r.json();
+      const image = data.ok ? (data.image_url || "") : "";
+      imageCache.set(url, image);
+      return image;
+    } catch {
+      return "";
+    }
   }
 
-  function choose(button, item) {
-    document.querySelectorAll(".performance-option")
+  async function hydrateCard(card) {
+    if (card.dataset.loaded === "1") return;
+    card.dataset.loaded = "1";
+    const image = await getProductionImage(card.dataset.url);
+    if (!image) {
+      const skeleton = card.querySelector(".image-skeleton");
+      if (skeleton) skeleton.style.background = "#2b2926";
+      return;
+    }
+
+    const img = new Image();
+    img.alt = card.dataset.title;
+    img.onload = () => {
+      const skeleton = card.querySelector(".image-skeleton");
+      if (skeleton) skeleton.remove();
+      card.prepend(img);
+    };
+    img.src = image;
+  }
+
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        hydrateCard(entry.target);
+        observer.unobserve(entry.target);
+      }
+    });
+  }, {rootMargin: "250px"});
+
+  cards.forEach(card => observer.observe(card));
+
+  function resetSelection() {
+    Object.values(fields).forEach(el => el.value = "");
+    submit.disabled = true;
+    selectionMsg.textContent = "Vali kuupäev.";
+  }
+
+  function choosePerformance(button, item) {
+    performanceArea.querySelectorAll(".performance-option")
       .forEach(el => el.classList.remove("selected"));
     button.classList.add("selected");
 
@@ -192,26 +260,33 @@
     fields.series_url.value = item.series_url;
     fields.title.value = item.title;
     fields.date_text.value = item.date_text;
-    fields.image_url.value = item.image_url || "";
+    fields.image_url.value = item.image_url || pickerImage.src || "";
     fields.production_url.value = item.production_url || "";
+
     submit.disabled = false;
+    selectionMsg.textContent = item.date_text;
   }
 
-  production.addEventListener("change", async () => {
-    clearChoice();
+  async function selectProduction(card) {
+    cards.forEach(c => c.classList.remove("active"));
+    card.classList.add("active");
+    resetSelection();
 
-    const option = production.options[production.selectedIndex];
-    const productionUrl = production.value;
-    const title = option?.dataset?.title || "";
+    const title = card.dataset.title;
+    const productionUrl = card.dataset.url;
 
-    if (!productionUrl || !title) {
-      area.className = "loading";
-      area.textContent = "Vali kõigepealt lavastus.";
-      return;
+    picker.classList.add("open");
+    pickerName.textContent = title;
+    pickerImage.style.display = "none";
+    performanceArea.className = "picker-msg";
+    performanceArea.textContent = "Laen Piletilevist etendusi…";
+
+    const image = await getProductionImage(productionUrl);
+    if (image) {
+      pickerImage.src = image;
+      pickerImage.alt = title;
+      pickerImage.style.display = "block";
     }
-
-    area.className = "loading";
-    area.textContent = "Laen kuupäevi ja kellaaegu…";
 
     try {
       const params = new URLSearchParams({
@@ -225,37 +300,40 @@
         throw new Error(data.error || "Etenduste laadimine ebaõnnestus.");
       }
 
-      area.className = "performance-list";
-      area.innerHTML = "";
-
-      if (!data.performances.length) {
-        area.className = "empty";
-        area.textContent = "Sellele lavastusele tulevasi etendusi ei leitud.";
-        return;
-      }
+      performanceArea.className = "performance-list";
+      performanceArea.innerHTML = "";
 
       data.performances.forEach(item => {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "performance-option";
 
-        const statusClass =
-          item.status === "Pilet saadaval" ? "available" : "sold";
-
+        const sold = item.status !== "Pilet saadaval";
         button.innerHTML = `
-          <span class="radio"></span>
           <span class="perf-date">${item.date_text}</span>
-          <span class="perf-status ${statusClass}">${item.status}</span>
+          <span class="perf-status">${item.status}</span>
         `;
-
-        button.addEventListener("click", () => choose(button, item));
-        area.appendChild(button);
+        if (!sold) button.title = "Pilet on praegu saadaval";
+        button.addEventListener("click", () => choosePerformance(button, item));
+        performanceArea.appendChild(button);
       });
 
+      picker.scrollIntoView({behavior: "smooth", block: "nearest"});
     } catch (error) {
-      area.className = "empty error-text";
-      area.textContent = error.message;
+      performanceArea.className = "picker-msg";
+      performanceArea.textContent = error.message;
     }
+  }
+
+  cards.forEach(card => {
+    card.addEventListener("click", () => selectProduction(card));
+  });
+
+  search.addEventListener("input", () => {
+    const q = search.value.trim().toLocaleLowerCase("et");
+    cards.forEach(card => {
+      card.hidden = !!q && !card.dataset.title.toLocaleLowerCase("et").includes(q);
+    });
   });
 })();
 </script>

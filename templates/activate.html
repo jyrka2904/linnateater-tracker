@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Määra parool · Linnateater Tracker{% endblock %}
+{% block layout %}
+<div class="auth-page">
+  <section class="auth-art">
+    <a class="logo" href="/login"><span class="logo-mark">L</span> Linnateater Tracker</a>
+    <h1>Sinu vanad jälgimised jäävad alles.</h1>
+    <p class="auth-caption">Kui kasutasid v1–v4 versiooni, määra nüüd oma olemasolevale telefoninumbrile parool. Konto ja trackerid säilivad.</p>
+  </section>
+  <section class="auth-panel">
+    <div class="auth-box">
+      <div class="auth-kicker">Olemasoleva konto uuendus</div>
+      <h2>Määra parool.</h2>
+      <p class="auth-copy">Kinnitame numbri veel ühe korra SMS-koodiga. Pärast seda saad alati parooliga sisse logida.</p>
+      <div class="auth-flashes">
+      {% for category,message in get_flashed_messages(with_categories=true) %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+      </div>
+      <form method="post">
+        <div class="field">
+          <label>Telefoninumber</label>
+          <input name="phone" value="{{ phone or '' }}" placeholder="+372..." required>
+        </div>
+        <div class="field">
+          <label>Uus parool</label>
+          <input name="password" type="password" minlength="8" required>
+        </div>
+        <div class="field">
+          <label>Korda parooli</label>
+          <input name="password2" type="password" minlength="8" required>
+        </div>
+        <button class="auth-primary">Saada kinnituskood</button>
+      </form>
+      <div class="auth-links"><a href="/login">Tagasi sisselogimisse</a></div>
+    </div>
+  </section>
+</div>
+{% endblock %}

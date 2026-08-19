@@ -1,19 +1,30 @@
 {% extends "base.html" %}
 {% block title %}Kinnita telefon · Linnateater Tracker{% endblock %}
-{% block body %}
-<div class="auth">
-  <div class="wordmark"><span class="mark">L</span> Linnateater Tracker</div>
-  <h1>Kinnita number.</h1>
-  <p class="intro">Kood saadeti numbrile {{ phone }}.</p>
-
-  {% for category,message in get_flashed_messages(with_categories=true) %}
-    <div class="flash {{ category }}">{{ message }}</div>
-  {% endfor %}
-
-  <form method="post">
-    <label>Kinnituskood</label>
-    <input name="code" inputmode="numeric" autocomplete="one-time-code" required>
-    <button class="primary">Kinnita</button>
-  </form>
+{% block layout %}
+<div class="auth-page">
+  <section class="auth-art">
+    <a class="logo" href="/login"><span class="logo-mark">L</span> Linnateater Tracker</a>
+    <h1>Kontrollime, et number on sinu.</h1>
+    <p class="auth-caption">See SMS-kinnitus on vajalik konto loomisel, vana konto uuendamisel või parooli taastamisel.</p>
+  </section>
+  <section class="auth-panel">
+    <div class="auth-box">
+      <div class="auth-kicker">SMS-kinnitus</div>
+      <h2>Sisesta kood.</h2>
+      <p class="auth-copy">Twilio saatis kinnituskoodi numbrile <strong>{{ phone }}</strong>.</p>
+      <div class="auth-flashes">
+      {% for category,message in get_flashed_messages(with_categories=true) %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+      </div>
+      <form method="post">
+        <div class="field">
+          <label>Kinnituskood</label>
+          <input name="code" inputmode="numeric" autocomplete="one-time-code" required autofocus>
+        </div>
+        <button class="auth-primary">Kinnita</button>
+      </form>
+    </div>
+  </section>
 </div>
 {% endblock %}
