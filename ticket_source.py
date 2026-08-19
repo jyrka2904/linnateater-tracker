@@ -2,6 +2,8 @@ import html as html_lib
 import re
 import time
 import unicodedata
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -93,7 +95,14 @@ def _clean(value: str) -> str:
 
 
 def _norm(value: str) -> str:
-    value = unicodedata.normalize("NFKD", value or "")
+    value = value or ""
+
+    # Linnateater uses discretionary soft hyphens in long words, e.g.
+    # "Seitsmemagaja\u00adpäev" and "Südame\u00adharjutus". These are visual
+    # line-break hints, not real word separators, so remove them completely.
+    value = re.sub(r"[\u00ad\u200b\u200c\u200d\ufeff]", "", value)
+
+    value = unicodedata.normalize("NFKD", value)
     value = "".join(ch for ch in value if not unicodedata.combining(ch))
     value = value.casefold()
     value = re.sub(r"[„“”\"'’`´]", "", value)
@@ -830,10 +839,35 @@ def list_performances(title: str, production_url: str):
             return f"{y}-{mo}-{d} {int(hh):02d}:{mm}"
 
         results.sort(key=sort_key)
-        return results
+
+        # Only future/current performances are useful to the tracker.
+        # This also prevents an old Piletilevi series (for a production that is
+        # no longer currently scheduled) from surfacing historical dates.
+        today = datetime.now(ZoneInfo("Europe/Tallinn")).date()
+        future_results = []
+
+        for item in results:
+            try:
+                date_part = item["date_text"].split("•", 1)[0].strip()
+                event_date = datetime.strptime(date_part, "%d.%m.%Y").date()
+            except Exception:
+                # Keep an unparsable row rather than silently dropping a
+                # potentially valid future performance.
+                future_results.append(item)
+                continue
+
+            if event_date >= today:
+                future_results.append(item)
+
+        if not future_results:
+            raise RuntimeError(
+                "Sellel lavastusel ei ole praegu tulevasi etendusi mängukavas."
+            )
+
+        return future_results
 
     return _cached(
-        "performances-v8:" + title_norm + ":" + production_url,
+        "performances-v9:" + title_norm + ":" + production_url,
         60,
         build,
     )
