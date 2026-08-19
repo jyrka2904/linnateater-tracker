@@ -39,9 +39,6 @@
         <div class="kicker">{{ tracker_count }} / {{ max_trackers }} aktiivset</div>
         <h2 class="section-title">Aktiivsed etendused</h2>
       </div>
-      <div class="section-note">
-        Kontroll toimub iga 15–30 sekundi järel.
-      </div>
     </div>
 
     {% if trackers %}
@@ -70,11 +67,10 @@
                   <div class="tracker-meta">{{ t.last_error }}</div>
                 {% elif t.last_checked_at %}
                   <div class="tracker-meta">
-                    {{ t.last_status or "Kontrollitud" }} ·
-                    {{ t.last_checked_at.strftime("%d.%m.%Y %H:%M:%S") }}
+                    {{ t.last_status or "Kontrollitud" }}
                   </div>
                 {% else %}
-                  <div class="tracker-meta">Esimene kontroll on tulemas</div>
+                  <div class="tracker-meta">Jälgimine aktiivne</div>
                 {% endif %}
 
                 <div class="tracker-actions">
