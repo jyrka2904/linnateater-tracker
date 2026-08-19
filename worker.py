@@ -214,12 +214,6 @@ def main():
         name="production-media",
         daemon=True,
     ).start()
-
-    threading.Thread(
-        target=image_cache_loop,
-        name="image-cache",
-        daemon=True,
-    ).start()
     print(
         f"Pause between completed cycles: {MIN_WAIT}–{MAX_WAIT} seconds",
         flush=True,

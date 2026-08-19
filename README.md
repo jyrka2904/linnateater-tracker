@@ -1,4 +1,16 @@
-# Linnateater Tracker v22
+# Linnateater Tracker v23
+
+Hotfix for v22 worker startup crash.
+
+v22 accidentally still started the removed `image_cache_loop` thread, causing `NameError: image_cache_loop is not defined` immediately after container startup.
+
+v23 removes that stale thread reference. The worker now starts only:
+- `performance_cache_loop`
+- `production_media_loop`
+- the normal 15–30 second ticket-check cycle
+
+All v22 PostgreSQL-stored WebP image functionality remains unchanged.
+
 
 ## New production-image architecture
 
