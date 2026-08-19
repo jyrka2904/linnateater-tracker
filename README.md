@@ -1,12 +1,12 @@
-# Piletivaht v25
+# Piletivaht v27
 
-Design and product-positioning update based on v23.
+Design refresh aligned to the supplied visual reference.
 
-Highlights:
-- new brand name: Piletivaht;
-- new SVG logo in /static/logo-piletivaht.svg;
-- richer topbar/background/auth design;
-- repertoire and tracker pages keep the existing card/list strengths;
-- dashboard and my-trackers now include theatre and date filters;
-- UI/copy prepared for additional theatres beyond Tallinna Linnateater;
-- tracker rows store theatre_name and theatre_slug for future multi-theatre support.
+Includes:
+- updated logo closer to the approved concept;
+- new premium dashboard / repertoire layout;
+- my-trackers page in the same visual language;
+- theatre/date/status filters;
+- right sidebar on the dashboard for current tracked shows;
+- auth styling compatibility fixes;
+- bugfix: dashboard now passes trackers to the sidebar.
