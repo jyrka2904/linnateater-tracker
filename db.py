@@ -59,3 +59,13 @@ def init_db():
             cur.execute(
                 "ALTER TABLE trackers ADD COLUMN IF NOT EXISTS production_url TEXT"
             )
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS production_image_cache (
+                    production_url TEXT PRIMARY KEY,
+                    image_url TEXT NOT NULL DEFAULT '',
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )

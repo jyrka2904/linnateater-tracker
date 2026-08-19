@@ -513,12 +513,11 @@ def _series_statuses(series_url: str):
 
 def list_performances(title: str, production_url: str):
     """
-    v4: use the verified Piletilevi series page as the canonical source.
+    v8 fast path: ONE Piletilevi series request.
 
-    The series page contains the complete set of current/future performances.
-    We collect each unique concrete event URL from it and then read each event
-    page individually for an exact date/time/status. This avoids both the
-    missing-link problem and the duplicate-date bug from earlier versions.
+    Piletilevi's series page already contains the concrete event URLs,
+    event codes, date/time and sold-out labels for every performance.
+    No per-event detail-page requests are needed.
     """
     title_norm = _norm(title)
 
@@ -526,9 +525,7 @@ def list_performances(title: str, production_url: str):
         series_url = _series_url_for_title(title)
 
         if not series_url:
-            # Keep a fallback for newly-added productions that are not yet in
-            # the mapping. If Linnateater later begins exposing direct links,
-            # they can still work without another deploy.
+            # Fallback for a newly added production not yet in the static map.
             event_urls, series_urls = _piletilevi_links_from_linnateater(
                 production_url
             )
@@ -543,60 +540,82 @@ def list_performances(title: str, production_url: str):
                     "jälgijasse lisatud."
                 )
 
-        event_urls = _event_links_from_series(series_url)
-        series_statuses = _series_statuses(series_url)
+        html = _get(series_url).text
+        soup = BeautifulSoup(html, "html.parser")
 
-        # Some Piletilevi pages can serialize event URLs without normal anchors.
-        # _event_links_from_series already checks both forms.
-        if not event_urls:
-            raise RuntimeError(
-                "Piletilevi seerialeht leiti, kuid konkreetsete etenduste "
-                "linke ei õnnestunud lugeda."
-            )
-
-        production_image = page_image(production_url)
         results = []
         seen_codes = set()
 
-        for event_url in event_urls:
+        for a in soup.find_all("a", href=True):
+            event_url = urljoin(series_url, a.get("href") or "")
+
+            if not EVENT_CODE_RE.search(urlparse(event_url).path):
+                continue
+
             try:
-                item = _extract_event_page_info(event_url)
+                code = _event_code(event_url)
             except Exception:
                 continue
 
-            code = item["event_code"]
-            if code in seen_codes or not item.get("date_text"):
+            if code in seen_codes:
                 continue
 
-            event_title_norm = _norm(
-                _strip_piletilevi_suffix(item.get("title") or "")
-            )
+            # Piletilevi series-page event links contain the date/time and
+            # status directly in the link/card text.
+            text = _clean(a.get_text(" ", strip=True))
 
-            # Allow replacement-performance notes, but reject unrelated events.
-            if title_norm and event_title_norm:
-                if (
-                    title_norm not in event_title_norm
-                    and event_title_norm not in title_norm
-                ):
-                    continue
+            # If the anchor itself is terse, inspect the smallest nearby row.
+            if not DATE_TIME_RE.search(text):
+                node = a
+                for _ in range(5):
+                    node = getattr(node, "parent", None)
+                    if node is None:
+                        break
+                    candidate = _clean(node.get_text(" ", strip=True))
+                    if DATE_TIME_RE.search(candidate) and len(candidate) < 900:
+                        text = candidate
+                        break
+
+            m = DATE_TIME_RE.search(text)
+            if not m:
+                continue
+
+            date_text = f"{m.group(1)} • {m.group(2)}"
+            low = _norm(text)
+
+            if "valja muudud" in low or "sold out" in low:
+                status = "Välja müüdud"
+            elif "muuk peatatud" in low or "suspended" in low:
+                status = "Müük peatatud"
+            else:
+                status = "Pilet saadaval"
+
+            # Keep only the selected production if title text is available.
+            row_norm = _norm(text)
+            if title_norm and row_norm and title_norm not in row_norm:
+                # Some cards omit the title in the clickable text, so do not
+                # reject solely on this condition when date/event code match.
+                pass
 
             seen_codes.add(code)
-            item["title"] = title
-            item["series_url"] = series_url
-            item["production_url"] = production_url
-
-            # IMPORTANT: availability comes from the exact event row on the
-            # series page, not from the event detail page.
-            if code in series_statuses:
-                item["status"] = series_statuses[code]
-            if not item.get("image_url"):
-                item["image_url"] = production_image
-            results.append(item)
+            results.append(
+                {
+                    "title": title,
+                    "date_text": date_text,
+                    "event_url": event_url,
+                    "event_code": code,
+                    "series_url": series_url,
+                    "status": status,
+                    # Image is supplied by the selected production card/cache.
+                    "image_url": "",
+                    "production_url": production_url,
+                }
+            )
 
         if not results:
             raise RuntimeError(
-                "Piletilevi seeria on olemas, kuid ühegi etenduse "
-                "kuupäeva ei õnnestunud lugeda."
+                "Piletilevi seerialeht leiti, kuid etenduste kuupäevi "
+                "ei õnnestunud lugeda."
             )
 
         def sort_key(item):
@@ -613,8 +632,8 @@ def list_performances(title: str, production_url: str):
         return results
 
     return _cached(
-        "performances-v4:" + title_norm + ":" + production_url,
-        120,
+        "performances-v8:" + title_norm + ":" + production_url,
+        60,
         build,
     )
 

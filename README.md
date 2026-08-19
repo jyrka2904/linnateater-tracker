@@ -1,43 +1,41 @@
-# Linnateater Tracker v7
+# Linnateater Tracker v8
 
-Built on v6.
+## Faster production images
 
-## Repertoire images without lag
+The repertoire renders immediately with placeholders.
 
-v7 no longer opens each individual production page to discover card images.
+After first paint, the browser makes ONE request to `/api/production-images`.
+The server:
+- reads cached production image URLs from PostgreSQL;
+- fetches only missing/stale Linnateater production pages;
+- fetches missing pages concurrently (up to 8 at once);
+- persists the resulting image URLs for 7 days.
 
-Instead, `list_productions()` extracts a thumbnail from the SAME Linnateater
-repertoire HTML request that is already used to get the production names.
+The browser then assigns the URLs to lazy/async `<img>` elements.
 
-The browser then loads those direct image URLs with:
+Result: images return to the repertoire without 20-30 sequential requests on
+every page visit.
 
-    loading="lazy"
-    decoding="async"
+## Much faster performance picker
 
-So:
-- no extra Flask API request per production card;
-- no extra Linnateater HTML request per production card;
-- images still appear in the repertoire;
-- only images near the viewport are downloaded by the browser.
+v7 opened every concrete Piletilevi event page separately.
 
-If a production card does not expose a thumbnail in the repertoire HTML, the
-app shows a lightweight fallback card. When the user selects that production,
-one production-image request is allowed to fetch the full image.
+v8 uses ONE Piletilevi series-page request. The series page already contains:
+- concrete event URL;
+- event code;
+- date;
+- time;
+- sold-out / available state.
 
-## Modal performance picker
+This should make the modal noticeably faster.
 
-Clicking a production now opens a fixed modal/pop-up.
+## Separate navigation
 
-Inside the modal:
-- large production image;
-- exact Piletilevi performance dates/times;
-- current availability;
-- "Jälgi seda etendust" action.
+Top navigation now has:
+- Repertuaar
+- Minu jälgimised
 
-The user no longer has to scroll past the full production gallery to find the
-date picker.
+`/dashboard` contains only production discovery/selection.
+`/my-trackers` contains the active monitored performances.
 
-## Deploy
-
-Replace v6 repository files with v7. Railway, PostgreSQL and Twilio settings do
-not change.
+Railway, PostgreSQL and Twilio settings do not need to change.

@@ -1,5 +1,6 @@
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import timedelta
 from functools import wraps
 
@@ -371,11 +372,7 @@ def logout():
     return redirect(url_for("login"))
 
 
-@app.get("/dashboard")
-@login_required
-def dashboard():
-    user = current_user()
-
+def load_user_trackers(user_id):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -385,11 +382,12 @@ def dashboard():
                 WHERE user_id=%s
                 ORDER BY created_at DESC
                 """,
-                (user["id"],),
+                (user_id,),
             )
-            trackers = cur.fetchall()
+            return cur.fetchall()
 
-    # Backfill images for legacy trackers.
+
+def backfill_tracker_images(trackers):
     for tracker in trackers:
         if not tracker.get("image_url"):
             try:
@@ -421,6 +419,13 @@ def dashboard():
             except Exception:
                 pass
 
+
+@app.get("/dashboard")
+@login_required
+def dashboard():
+    user = current_user()
+    trackers = load_user_trackers(user["id"])
+
     try:
         productions = list_productions()
         productions_error = None
@@ -431,12 +436,100 @@ def dashboard():
     return render_template(
         "dashboard.html",
         user=user,
-        trackers=trackers,
+        tracker_count=len(trackers),
         productions=productions,
         productions_error=productions_error,
         max_trackers=MAX_TRACKERS,
         can_add=len(trackers) < MAX_TRACKERS,
     )
+
+
+@app.get("/my-trackers")
+@login_required
+def my_trackers():
+    user = current_user()
+    trackers = load_user_trackers(user["id"])
+    backfill_tracker_images(trackers)
+
+    return render_template(
+        "my_trackers.html",
+        user=user,
+        trackers=trackers,
+        tracker_count=len(trackers),
+        max_trackers=MAX_TRACKERS,
+    )
+
+
+@app.get("/api/production-images")
+@login_required
+def api_production_images():
+    """
+    Return all production images in one request.
+
+    Cached URLs are read from PostgreSQL immediately. Missing URLs are fetched
+    concurrently from Linnateater and persisted, so later page loads do not
+    repeat those HTML requests.
+    """
+    try:
+        productions = list_productions()
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+
+    urls = [p["production_url"] for p in productions]
+
+    cached = {}
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT production_url, image_url
+                FROM production_image_cache
+                WHERE production_url = ANY(%s)
+                  AND updated_at > NOW() - INTERVAL '7 days'
+                """,
+                (urls,),
+            )
+            for row in cur.fetchall():
+                cached[row["production_url"]] = row["image_url"]
+
+    missing = [url for url in urls if url not in cached]
+
+    # One batch request from the browser, concurrent work server-side.
+    if missing:
+        def fetch_one(url):
+            try:
+                return url, page_image(url)
+            except Exception:
+                return url, ""
+
+        fetched = {}
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = [pool.submit(fetch_one, url) for url in missing]
+            for future in as_completed(futures):
+                url, image = future.result()
+                fetched[url] = image
+
+        if fetched:
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    for url, image in fetched.items():
+                        cur.execute(
+                            """
+                            INSERT INTO production_image_cache (
+                                production_url, image_url, updated_at
+                            )
+                            VALUES (%s, %s, NOW())
+                            ON CONFLICT (production_url)
+                            DO UPDATE SET
+                                image_url=EXCLUDED.image_url,
+                                updated_at=NOW()
+                            """,
+                            (url, image),
+                        )
+
+        cached.update(fetched)
+
+    return jsonify({"ok": True, "images": cached})
 
 
 @app.get("/api/production-image")
@@ -532,7 +625,7 @@ def add_tracker():
     except Exception as e:
         flash(f"Jälgimist ei saanud lisada: {e}", "error")
 
-    return redirect(url_for("dashboard"))
+    return redirect(url_for("my_trackers"))
 
 
 @app.post("/trackers/<int:tracker_id>/delete")
@@ -546,7 +639,7 @@ def delete_tracker(tracker_id):
                 (tracker_id, user["id"]),
             )
     flash("Jälgimine eemaldatud.", "success")
-    return redirect(url_for("dashboard"))
+    return redirect(url_for("my_trackers"))
 
 
 @app.get("/health")
