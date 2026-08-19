@@ -1,37 +1,36 @@
-# Linnateater Tracker v11
+# Linnateater Tracker v17
 
-## Fix: blurry production images
+## Faster repertoire again
 
-Some production cards were still using lower-resolution thumbnail images from
-the Linnateater listing page. That is why cards such as "Alguses oli laul" and
-"Esietendus" could look blurry.
+v17 returns to the lightweight v10-style image strategy. The repertoire uses
+the smaller card images from Linnateater's listing instead of large production
+page images, so the browser has much less image data to decode and render.
 
-v11 changes the image priority:
+## Blur fix
 
-1. high-resolution image from the individual Linnateater production page;
-2. high-resolution fallback from the matching Piletilevi series page;
-3. only if neither exists, the smaller listing thumbnail.
+A few cards looked blurry because the parser could choose `<img src>` first.
+On lazy-loaded pages that can be a blurred placeholder.
 
-## Important deployment behavior
+v17 now chooses:
+1. the largest `data-srcset` / `srcset` candidate;
+2. `data-src` / lazy-loaded source;
+3. ordinary `src` only as a last fallback.
 
-On the first v11 worker start, the image cache is refreshed with `force_all`,
-so previously cached low-resolution image URLs are replaced with better ones.
+So the images remain lightweight without selecting the blurred placeholder.
 
-That means:
-- deploy v11;
-- let the worker run for a moment;
-- then hard refresh the browser.
+## Cache migration
 
-After that, the sharper images should appear on the production cards.
+The first v17 worker start force-refreshes the cached image URLs so the large
+v11-v16 images are replaced by the optimized card images.
 
-## Other behavior unchanged
-
-- multi-select dates in the modal;
-- separate Repertuaar / Minu jälgimised views;
-- phone + password login;
-- Twilio SMS alerts.
+All later features remain unchanged, including:
+- multiple dates in one modal;
+- Repertuaar / Minu jälgimised;
+- password login;
+- Twilio SMS alerts;
+- v16 login-page headline spacing.
 
 ## Deploy
 
-Replace v10 files with this ZIP. Railway, PostgreSQL and Twilio settings stay
-the same.
+Replace v16 files with this ZIP. Railway, PostgreSQL and Twilio settings stay
+unchanged.
