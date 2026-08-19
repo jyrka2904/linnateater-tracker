@@ -2,13 +2,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 
 import requests
-from PIL import Image
+from PIL import Image, ImageFilter, ImageStat
 
 from db import get_conn
 from ticket_source import (
     list_productions,
     production_image,
-    production_image_fallback,
+    production_page_image_candidates,
 )
 
 
@@ -18,11 +18,14 @@ UA = (
     "Chrome/151.0.0.0 Safari/537.36"
 )
 
-# Cards are commonly rendered at ~300-350 CSS px wide.
-# A ~650 px short side gives a useful 2x-ish source without switching every
-# production to giant full-resolution artwork.
 MIN_SHORT_SIDE = 650
+
+# Edge-variance score after normalizing the image down to at most 600 px.
+# Very soft/blurred images produce much less high-frequency edge detail.
+MIN_SHARPNESS = 170.0
+
 IMAGE_TIMEOUT = 15
+MAX_SCORE_SIDE = 600
 
 
 def get_cached_images(productions):
@@ -44,14 +47,15 @@ def get_cached_images(productions):
             )
             for row in cur.fetchall():
                 result[row["production_url"]] = row["image_url"]
+
     return result
 
 
-def image_dimensions(image_url: str):
+def inspect_image(image_url: str):
     """
-    Download the image in the BACKGROUND WORKER and read its actual dimensions.
+    Return dimensions + an approximate sharpness score.
 
-    This never runs inside the repertoire web request.
+    Runs only in the Railway worker background thread.
     """
     if not image_url:
         return None
@@ -64,80 +68,164 @@ def image_dimensions(image_url: str):
         )
         response.raise_for_status()
 
-        with Image.open(BytesIO(response.content)) as img:
-            width, height = img.size
-            return int(width), int(height)
+        with Image.open(BytesIO(response.content)) as source:
+            source.load()
+
+            width, height = source.size
+            image = source.convert("L")
+
+            # Normalize scoring size so a giant file does not automatically
+            # receive a larger score simply because it has more pixels.
+            max_side = max(image.size)
+            if max_side > MAX_SCORE_SIDE:
+                scale = MAX_SCORE_SIDE / max_side
+                image = image.resize(
+                    (
+                        max(1, int(image.width * scale)),
+                        max(1, int(image.height * scale)),
+                    ),
+                    Image.Resampling.LANCZOS,
+                )
+
+            # FIND_EDGES is cheap and works well enough here: blurry artwork has
+            # a much flatter edge map than a crisp photograph.
+            edges = image.filter(ImageFilter.FIND_EDGES)
+            stats = ImageStat.Stat(edges)
+
+            # Variance of edge intensity. Higher = more fine detail/sharpness.
+            sharpness = float(stats.var[0])
+
+            return {
+                "width": int(width),
+                "height": int(height),
+                "short_side": int(min(width, height)),
+                "area": int(width * height),
+                "sharpness": sharpness,
+            }
 
     except Exception:
         return None
 
 
-def is_large_enough(dimensions):
-    if not dimensions:
+def is_good_card_image(info):
+    if not info:
         return False
 
-    width, height = dimensions
-    return min(width, height) >= MIN_SHORT_SIDE
+    return (
+        info["short_side"] >= MIN_SHORT_SIDE
+        and info["sharpness"] >= MIN_SHARPNESS
+    )
 
 
-def pixel_area(dimensions):
-    if not dimensions:
-        return 0
-    return dimensions[0] * dimensions[1]
+def candidate_score(info):
+    if not info:
+        return -1.0
+
+    # Sharpness is most important once minimum usable dimensions are reached.
+    dimension_bonus = min(info["short_side"], 1400) / 10.0
+    return info["sharpness"] * 3.0 + dimension_bonus
+
+
+def best_alternative(item, current_url, current_info):
+    """
+    Inspect a small number of production-page candidates only when necessary.
+    """
+    best_url = current_url
+    best_info = current_info
+    best_score = candidate_score(current_info)
+
+    candidates = production_page_image_candidates(
+        item["title"],
+        item["production_url"],
+        limit=10,
+    )
+
+    inspected = 0
+
+    for url in candidates:
+        if not url or url == current_url:
+            continue
+
+        info = inspect_image(url)
+        inspected += 1
+
+        if not info:
+            continue
+
+        # Ignore tiny images/headshots/icons regardless of edge score.
+        if info["short_side"] < MIN_SHORT_SIDE:
+            continue
+
+        score = candidate_score(info)
+
+        if score > best_score:
+            best_url = url
+            best_info = info
+            best_score = score
+
+        # A clearly crisp image lets us stop early and avoids needless remote
+        # downloads. The threshold is intentionally above the minimum.
+        if (
+            info["sharpness"] >= MIN_SHARPNESS * 1.7
+            and info["short_side"] >= 900
+        ):
+            break
+
+    return best_url, best_info, inspected
 
 
 def choose_image(item):
     """
-    Keep the v10 lightweight thumbnail when it is large enough.
+    Default to the fast v10 listing image.
 
-    Only a physically small thumbnail triggers one extra lookup for this
-    production. If the fallback is actually better, cache that instead.
+    Only images that are physically too small OR measurably blurry trigger
+    production-page candidate inspection.
     """
     listed = item.get("image_url") or ""
 
     if listed:
-        listed_dims = image_dimensions(listed)
+        listed_info = inspect_image(listed)
 
-        if is_large_enough(listed_dims):
-            return listed, listed_dims, "listing"
+        if is_good_card_image(listed_info):
+            return listed, listed_info, "listing", 0
 
-        # Thumbnail is genuinely small (or unreadable): inspect a larger source.
-        fallback = production_image_fallback(
-            item["title"],
-            item["production_url"],
+        better_url, better_info, inspected = best_alternative(
+            item,
+            listed,
+            listed_info,
         )
 
-        if fallback and fallback != listed:
-            fallback_dims = image_dimensions(fallback)
+        if (
+            better_url
+            and better_url != listed
+            and candidate_score(better_info) > candidate_score(listed_info) * 1.15
+        ):
+            return better_url, better_info, "upgraded", inspected
 
-            # Use the fallback only when it has meaningfully more pixels.
-            if (
-                is_large_enough(fallback_dims)
-                or pixel_area(fallback_dims) > pixel_area(listed_dims) * 1.5
-            ):
-                return fallback, fallback_dims, "fallback"
+        return listed, listed_info, "listing-soft", inspected
 
-        # If no better source exists, keep the lightweight image rather than
-        # leaving the card blank.
-        return listed, listed_dims, "listing-small"
-
-    # No listing image at all: use the existing layered fallback.
     image = production_image(
         item["title"],
         item["production_url"],
     )
-    return image, image_dimensions(image), "fallback-only"
+
+    return image, inspect_image(image), "fallback-only", 0
 
 
-def refresh_production_images(max_workers=6, force_all=False):
+def refresh_production_images(max_workers=4, force_all=False):
     productions = list_productions()
+
     if not productions:
         return 0, 0, 0
 
-    by_url = {p["production_url"]: p for p in productions}
+    by_url = {
+        p["production_url"]: p
+        for p in productions
+    }
     urls = list(by_url)
 
     fresh = {}
+
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -150,37 +238,59 @@ def refresh_production_images(max_workers=6, force_all=False):
                 """,
                 (urls,),
             )
+
             for row in cur.fetchall():
                 fresh[row["production_url"]] = row["image_url"]
 
-    targets = urls if force_all else [url for url in urls if url not in fresh]
+    targets = (
+        urls
+        if force_all
+        else [url for url in urls if url not in fresh]
+    )
 
     if not targets:
         return len(productions), 0, 0
 
     def fetch_one(url):
         item = by_url[url]
+
         try:
-            image, dims, source = choose_image(item)
-            return url, image, dims, source
+            image, info, source, inspected = choose_image(item)
+            return url, image, info, source, inspected
         except Exception:
-            return url, "", None, "error"
+            return url, "", None, "error", 0
 
     fetched = {}
     upgraded = 0
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = [pool.submit(fetch_one, url) for url in targets]
+        futures = [
+            pool.submit(fetch_one, url)
+            for url in targets
+        ]
 
         for future in as_completed(futures):
-            url, image, dims, source = future.result()
+            url, image, info, source, inspected = future.result()
             fetched[url] = image
 
-            if source == "fallback":
+            if source == "upgraded":
                 upgraded += 1
+
                 print(
-                    f"🖼 Upgraded small thumbnail: "
-                    f"{by_url[url]['title']} → {dims}",
+                    "🖼 Replaced blurry thumbnail: "
+                    f"{by_url[url]['title']} → "
+                    f"{info['width']}x{info['height']} "
+                    f"(sharpness {info['sharpness']:.1f}; "
+                    f"{inspected} alternatives checked)",
+                    flush=True,
+                )
+
+            elif source == "listing-soft":
+                print(
+                    "🖼 No clearly better image found: "
+                    f"{by_url[url]['title']} "
+                    f"(sharpness "
+                    f"{(info['sharpness'] if info else 0):.1f})",
                     flush=True,
                 )
 
@@ -206,5 +316,9 @@ def refresh_production_images(max_workers=6, force_all=False):
                     (url, image),
                 )
 
-    resolved = sum(bool(image) for image in fetched.values())
+    resolved = sum(
+        bool(image)
+        for image in fetched.values()
+    )
+
     return len(productions), resolved, upgraded

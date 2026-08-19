@@ -379,6 +379,50 @@ def production_image(title: str, production_url: str) -> str:
 
     return ""
 
+def production_page_image_candidates(
+    title: str,
+    production_url: str,
+    limit: int = 12,
+):
+    """
+    Return several plausible images from the production page.
+
+    The background worker scores these for size + sharpness. This is more
+    reliable than taking the first image when the site's card artwork itself
+    happens to be intentionally soft/blurred.
+    """
+    candidates = []
+
+    try:
+        html = _get(production_url).text
+        soup = BeautifulSoup(html, "html.parser")
+
+        for image in _image_candidates(
+            soup,
+            html,
+            production_url,
+        ):
+            if image not in candidates:
+                candidates.append(image)
+
+            if len(candidates) >= limit:
+                break
+    except Exception:
+        pass
+
+    # Add the Piletilevi series image as another fallback candidate.
+    series_url = SERIES_BY_TITLE.get(_norm(title))
+    if series_url and len(candidates) < limit:
+        try:
+            image = page_image(series_url)
+            if image and image not in candidates:
+                candidates.append(image)
+        except Exception:
+            pass
+
+    return candidates[:limit]
+
+
 def production_image_fallback(title: str, production_url: str) -> str:
     """
     Resolve a larger image without reusing the repertoire-list thumbnail.

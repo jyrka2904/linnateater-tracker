@@ -1,66 +1,65 @@
-# Linnateater Tracker v19
+# Linnateater Tracker v20
 
-Built directly on v18.
+Built directly on v19.
 
-## Goal
+## Why v19 did not fix all blurry cards
 
-Keep the fast v10/v18 repertoire behavior, but automatically replace ONLY
-production thumbnails that are physically too small.
+The affected image files are not necessarily small. A 1000+ px image can still
+be visually blurred/soft, so dimension checks alone cannot identify the
+problem.
 
-## How image quality is detected
+## v20: actual sharpness detection
 
-The Railway worker downloads the image in its own background thread and reads
-its actual pixel dimensions with Pillow.
+The Railway worker now measures two things:
 
-The default lightweight Linnateater listing thumbnail is kept when its shorter
-side is at least 650 px.
+1. physical image dimensions;
+2. edge-detail variance (approximate visual sharpness).
 
-If the thumbnail is smaller:
-1. fetch a larger image candidate from the individual Linnateater production
-   page;
-2. use it only if it is large enough or has at least 1.5x the pixel area;
-3. cache the chosen URL in PostgreSQL.
+A lightweight repertoire thumbnail is used immediately when it is both large
+enough and sharp enough.
 
-This means normal sharp thumbnails stay lightweight, while cards such as a
-small/blurred source can automatically receive a better image.
+If it is large but measurably blurry:
+- fetch several alternative images from that production's Linnateater page;
+- score them by sharpness and dimensions;
+- select a meaningfully better candidate;
+- persist only that URL in PostgreSQL.
 
-## No web-page lag from quality checking
+The normal repertoire HTTP request still performs NONE of this work.
 
-Dimension probing and fallback discovery run in a dedicated daemon thread in
-the Railway worker.
+## Performance characteristics
 
-They are NOT executed:
-- in the repertoire HTTP request;
-- when opening a production;
-- in the 15–30 second active ticket-monitor cycle.
+All quality analysis stays inside the dedicated image-cache background thread.
 
-The first v19 worker run checks every production once so existing cached small
-images can be repaired. Later checks happen every 6 hours and normal cache
-behavior resumes.
+It does not block:
+- repertoire page rendering;
+- opening a production modal;
+- the 15–30 second ticket-monitor cycle;
+- the performance-cache background thread.
 
-## New dependency
+Only blurry/small thumbnails trigger inspection of multiple alternatives.
 
-Pillow is included only so the background worker can read image dimensions.
+## First deploy
 
-## Existing v18 features retained
+The first v20 worker run force-rechecks all current production images so old
+v19 cache choices can be replaced.
 
-- PostgreSQL performance cache;
-- fast modal dates;
-- added Piletilevi series mappings;
-- multiple dates selectable at once;
+Worker logs will show messages such as:
+
+    🖼 Replaced blurry thumbnail: Krum → 1200x1600
+       (sharpness 420.3; 3 alternatives checked)
+
+## Existing features retained
+
+Everything from v18/v19 remains, including:
+- fast PostgreSQL performance cache;
+- multiple dates in one modal;
+- current Piletilevi series mappings;
 - Repertuaar / Minu jälgimised;
 - password login;
 - Twilio SMS alerts;
-- approved login-page headline spacing.
+- approved login headline spacing.
 
 ## Deploy
 
-Replace v18 files with this ZIP. No Railway, PostgreSQL or Twilio settings need
-to change.
-
-After deployment, worker logs may show entries such as:
-
-    🖼 Upgraded small thumbnail: Alguses oli laul → (1200, 1600)
-
-Only productions whose lightweight image is actually too small should be
-upgraded.
+Replace v19 files with this ZIP. Railway, PostgreSQL and Twilio settings remain
+unchanged.
