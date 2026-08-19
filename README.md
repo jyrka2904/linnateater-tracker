@@ -1,35 +1,34 @@
-# Linnateater Tracker v2
+# Linnateater Tracker v3
 
-## v2 changes
+This release fixes the three issues found in v2.
 
-- No Piletilevi URL needs to be pasted manually.
-- The dashboard first loads Tallinna Linnateater productions.
-- Selecting a production loads its future Piletilevi performances.
-- User selects the exact date/time to monitor.
-- Each active tracker displays the production image from Linnateater.
-- The UI has been redesigned in a theatre/editorial style inspired by
-  Tallinna Linnateater's visual language.
-- Existing v1 database is migrated automatically by `ALTER TABLE ... IF NOT EXISTS`.
-- Existing Railway/Twilio environment variables remain the same.
+## Fixed
 
-## Replace v1
+1. Missing performances
+   - v2 scraped the generic Piletilevi organiser page.
+   - v3 starts from the selected production's own Linnateater page and follows
+     that production's Piletilevi event/series links.
 
-Upload the contents of this ZIP to the existing GitHub repository and replace
-the matching files. Do not delete the Railway PostgreSQL database and do not
-create a new Twilio setup.
+2. Repeated date/time
+   - v2 could read one date from a shared parent container.
+   - v3 opens each unique concrete Piletilevi event URL and reads that event's
+     own date/time, deduplicated by Piletilevi event code.
 
-Web Start Command:
+3. Missing production image
+   - v3 uses OpenGraph, Twitter image, img/src, lazy-load attributes, srcset,
+     CSS/JSON image URLs.
+   - existing v1/v2 trackers with no image are automatically backfilled from
+     their Piletilevi event page and/or matching Linnateater production page.
+
+## Deploy
+
+Replace the existing repository files with this ZIP's contents.
+
+Do not delete PostgreSQL, create a new Railway project, or create new Twilio
+services. Existing environment variables remain unchanged.
+
+Web:
     /bin/sh -c "exec gunicorn app:app --bind 0.0.0.0:$PORT"
 
-Worker Start Command:
+Worker:
     python -u worker.py
-
-## Data sources
-
-Production names and production images:
-    https://linnateater.ee/lavastused/
-
-Performance dates, event links and availability:
-    https://www.piletilevi.ee/korraldajad/21-69-257/tallinna-linnateater
-
-Ticket availability checks continue against Piletilevi.

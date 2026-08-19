@@ -15,7 +15,7 @@ from flask import (
 from twilio.rest import Client
 
 from db import get_conn, init_db
-from ticket_source import list_performances, list_productions
+from ticket_source import list_performances, list_productions, tracker_image
 
 
 app = Flask(__name__)
@@ -148,6 +148,38 @@ def dashboard():
                 (user["id"],),
             )
             trackers = cur.fetchall()
+
+    # Backfill images for old v1/v2 trackers.
+    for tracker in trackers:
+        if not tracker.get("image_url"):
+            try:
+                image_url, production_url = tracker_image(
+                    tracker.get("title") or "",
+                    tracker.get("event_url") or "",
+                    tracker.get("production_url") or "",
+                )
+                if image_url:
+                    tracker["image_url"] = image_url
+                    if production_url:
+                        tracker["production_url"] = production_url
+
+                    with get_conn() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                """
+                                UPDATE trackers
+                                SET image_url=%s,
+                                    production_url=COALESCE(NULLIF(%s, ''), production_url)
+                                WHERE id=%s
+                                """,
+                                (
+                                    image_url,
+                                    production_url or "",
+                                    tracker["id"],
+                                ),
+                            )
+            except Exception:
+                pass
 
     try:
         productions = list_productions()

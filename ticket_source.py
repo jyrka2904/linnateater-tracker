@@ -2,7 +2,6 @@ import html as html_lib
 import re
 import time
 import unicodedata
-from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -10,9 +9,6 @@ from bs4 import BeautifulSoup
 
 
 LINNATEATER_PRODUCTIONS = "https://linnateater.ee/lavastused/"
-PILETILEVI_ORGANIZER = (
-    "https://www.piletilevi.ee/korraldajad/21-69-257/tallinna-linnateater"
-)
 
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -23,22 +19,10 @@ TIMEOUT = 18
 
 EVENT_CODE_RE = re.compile(r"/piletid/([A-Z0-9]+)/", re.I)
 DATE_TIME_RE = re.compile(
-    r"\b(\d{2}\.\d{2}\.\d{4})\b.{0,40}?\b(\d{1,2}:\d{2})\b"
+    r"\b(\d{2}\.\d{2}\.\d{4})\b.{0,80}?\b(\d{1,2}:\d{2})\b"
 )
 
 _cache = {}
-
-
-@dataclass
-class Performance:
-    title: str
-    date_text: str
-    event_url: str
-    event_code: str
-    series_url: str
-    status: str
-    image_url: str
-    production_url: str
 
 
 def _cached(key, ttl, builder):
@@ -78,6 +62,17 @@ def _norm(value: str) -> str:
     return " ".join(value.split())
 
 
+def _strip_piletilevi_suffix(title: str) -> str:
+    title = _clean(title)
+    title = re.sub(
+        r"\s*\(\s*Tallinna\s+Linnateater\s*\)\s*$",
+        "",
+        title,
+        flags=re.I,
+    )
+    return title.strip()
+
+
 def _event_code(url: str) -> str:
     m = EVENT_CODE_RE.search(urlparse(url).path)
     if not m:
@@ -85,17 +80,85 @@ def _event_code(url: str) -> str:
     return m.group(1).upper()
 
 
-def _og_image(soup, base_url=""):
-    tag = soup.find("meta", attrs={"property": "og:image"})
-    if tag and tag.get("content"):
-        return urljoin(base_url, tag["content"])
+def _image_candidates(soup, raw_html: str, base_url: str):
+    candidates = []
 
-    tag = soup.find("meta", attrs={"name": "twitter:image"})
-    if tag and tag.get("content"):
-        return urljoin(base_url, tag["content"])
+    for attrs in (
+        {"property": "og:image"},
+        {"property": "og:image:url"},
+        {"name": "twitter:image"},
+        {"name": "twitter:image:src"},
+    ):
+        tag = soup.find("meta", attrs=attrs)
+        if tag and tag.get("content"):
+            candidates.append(tag["content"])
 
-    img = soup.find("img", src=True)
-    return urljoin(base_url, img["src"]) if img else ""
+    for img in soup.find_all("img"):
+        for attr in ("src", "data-src", "data-lazy-src", "data-original"):
+            value = img.get(attr)
+            if value:
+                candidates.append(value)
+
+        srcset = img.get("srcset") or img.get("data-srcset")
+        if srcset:
+            for part in srcset.split(","):
+                url = part.strip().split(" ")[0]
+                if url:
+                    candidates.append(url)
+
+    for match in re.findall(
+        r'(?:url\(|["\'])(https?://[^"\'()\\\s]+?\.(?:jpg|jpeg|png|webp)(?:\?[^"\'()\\\s]*)?)',
+        raw_html,
+        flags=re.I,
+    ):
+        candidates.append(match)
+
+    for match in re.findall(
+        r'["\']([^"\']+?\.(?:jpg|jpeg|png|webp)(?:\?[^"\']*)?)["\']',
+        raw_html,
+        flags=re.I,
+    ):
+        if "/uploads/" in match or "/wp-content/" in match:
+            candidates.append(match)
+
+    cleaned = []
+    seen = set()
+
+    for value in candidates:
+        value = html_lib.unescape(value or "").strip()
+        if not value or value.startswith("data:"):
+            continue
+        url = urljoin(base_url, value)
+        low = url.lower()
+
+        if any(
+            token in low
+            for token in (
+                "logo",
+                "icon",
+                "favicon",
+                "sprite",
+                "avatar",
+                "placeholder",
+            )
+        ):
+            continue
+
+        if url not in seen:
+            seen.add(url)
+            cleaned.append(url)
+
+    return cleaned
+
+
+def page_image(url: str) -> str:
+    def build():
+        html = _get(url).text
+        soup = BeautifulSoup(html, "html.parser")
+        candidates = _image_candidates(soup, html, url)
+        return candidates[0] if candidates else ""
+
+    return _cached("image:" + url, 1800, build)
 
 
 def list_productions():
@@ -118,7 +181,6 @@ def list_productions():
             if not title:
                 title = _clean(a.get_text(" ", strip=True))
 
-            # Skip generic navigation labels.
             if not title or title.lower() in {
                 "lavastused",
                 "lavastuste arhiiv",
@@ -140,167 +202,289 @@ def list_productions():
     return _cached("productions", 300, build)
 
 
-def production_details(production_url: str):
-    def build():
-        html = _get(production_url).text
-        soup = BeautifulSoup(html, "html.parser")
-        h1 = soup.find("h1")
-        title = _clean(h1.get_text(" ", strip=True)) if h1 else ""
+def production_for_title(title: str):
+    wanted = _norm(_strip_piletilevi_suffix(title))
+    productions = list_productions()
 
-        if not title:
-            # Linnateater pages often render the title outside h1 in parsed HTML.
-            page_title = soup.find("title")
-            if page_title:
-                title = _clean(page_title.get_text(" ", strip=True)).split(" - ")[0]
+    for item in productions:
+        if _norm(item["title"]) == wanted:
+            return item
 
-        return {
-            "title": title,
-            "image_url": _og_image(soup, production_url),
-        }
+    for item in productions:
+        n = _norm(item["title"])
+        if n and wanted and (n in wanted or wanted in n):
+            return item
 
-    return _cached("production:" + production_url, 1800, build)
+    return None
 
 
-def _context_for_anchor(anchor):
-    """
-    Find the smallest nearby wrapper that contains a date+time.
-    Piletilevi markup can change, so do not depend on one CSS class.
-    """
-    node = anchor
-    best = _clean(anchor.get_text(" ", strip=True))
-
-    for _ in range(7):
-        node = getattr(node, "parent", None)
-        if node is None:
-            break
-        text = _clean(node.get_text(" ", strip=True))
-        if text:
-            best = text
-        if DATE_TIME_RE.search(text):
-            # Avoid swallowing the entire organizer page.
-            if len(text) < 1600:
-                return text
-    return best
-
-
-def _extract_date_text(context: str):
-    m = DATE_TIME_RE.search(context)
-    if not m:
-        return ""
-    return f"{m.group(1)} • {m.group(2)}"
-
-
-def _status_from_context(context: str):
-    low = _norm(context)
-    if "valja muudud" in low or "sold out" in low:
-        return "Välja müüdud"
-    if "peatatud" in low or "suspended" in low:
-        return "Müük peatatud"
-    return "Pilet saadaval"
-
-
-def _find_series_url(event_url: str):
+def _extract_event_page_info(event_url: str):
     html = _get(event_url).text
     soup = BeautifulSoup(html, "html.parser")
 
-    for a in soup.find_all("a", href=True):
-        txt = _norm(a.get_text(" ", strip=True))
-        href = urljoin(event_url, a.get("href") or "")
-        if "/series/" in href and (
-            "vaata kogu seeriat" in txt
-            or "other events from the series" in txt
-            or "series" in href
-        ):
-            return href
+    h1 = soup.find("h1")
+    title = _clean(h1.get_text(" ", strip=True)) if h1 else ""
+    body_text = _clean(soup.get_text(" ", strip=True))
 
-    # If no series URL is exposed, the event page itself remains usable as a
-    # fallback checker target.
-    return event_url
+    date_text = ""
+    m = DATE_TIME_RE.search(body_text)
+    if m:
+        date_text = f"{m.group(1)} • {m.group(2)}"
+
+    if not date_text:
+        for tag in soup.find_all("meta"):
+            content = tag.get("content") or ""
+            m = DATE_TIME_RE.search(content)
+            if m:
+                date_text = f"{m.group(1)} • {m.group(2)}"
+                break
+
+    low = _norm(body_text[:6500])
+    if "valja muudud" in low or "sold out" in low:
+        status = "Välja müüdud"
+    elif "muuk peatatud" in low or "suspended" in low:
+        status = "Müük peatatud"
+    else:
+        status = "Pilet saadaval"
+
+    series_url = ""
+    for a in soup.find_all("a", href=True):
+        href = urljoin(event_url, a.get("href") or "")
+        text = _norm(a.get_text(" ", strip=True))
+        if "/series/" in href and (
+            "vaata kogu seeriat" in text
+            or "series" in href.lower()
+            or "kogu seeriat" in text
+        ):
+            series_url = href
+            break
+
+    image_url = page_image(event_url)
+
+    return {
+        "event_url": event_url,
+        "event_code": _event_code(event_url),
+        "title": title,
+        "date_text": date_text,
+        "status": status,
+        "series_url": series_url or event_url,
+        "image_url": image_url,
+    }
+
+
+def _piletilevi_links_from_linnateater(production_url: str):
+    html = _get(production_url).text
+    soup = BeautifulSoup(html, "html.parser")
+
+    event_urls = []
+    series_urls = []
+    seen_events = set()
+    seen_series = set()
+
+    for a in soup.find_all("a", href=True):
+        href = urljoin(production_url, a.get("href") or "")
+        host = urlparse(href).netloc.lower()
+        if "piletilevi" not in host:
+            continue
+
+        if EVENT_CODE_RE.search(urlparse(href).path):
+            code = _event_code(href)
+            if code not in seen_events:
+                seen_events.add(code)
+                event_urls.append(href)
+
+        elif "/series/" in urlparse(href).path.lower():
+            if href not in seen_series:
+                seen_series.add(href)
+                series_urls.append(href)
+
+    for raw in re.findall(
+        r'https?://(?:www\.)?piletilevi\.ee/[^"\'<>\\\s]+',
+        html,
+        flags=re.I,
+    ):
+        href = html_lib.unescape(raw).replace("\\/", "/")
+        path = urlparse(href).path
+
+        if EVENT_CODE_RE.search(path):
+            try:
+                code = _event_code(href)
+            except Exception:
+                continue
+            if code not in seen_events:
+                seen_events.add(code)
+                event_urls.append(href)
+
+        elif "/series/" in path.lower() and href not in seen_series:
+            seen_series.add(href)
+            series_urls.append(href)
+
+    return event_urls, series_urls
+
+
+def _event_links_from_series(series_url: str):
+    html = _get(series_url).text
+    soup = BeautifulSoup(html, "html.parser")
+
+    urls = []
+    seen = set()
+
+    for a in soup.find_all("a", href=True):
+        href = urljoin(series_url, a.get("href") or "")
+        if not EVENT_CODE_RE.search(urlparse(href).path):
+            continue
+        code = _event_code(href)
+        if code not in seen:
+            seen.add(code)
+            urls.append(href)
+
+    for raw in re.findall(
+        r'https?://(?:www\.)?piletilevi\.ee/[^"\'<>\\\s]+',
+        html,
+        flags=re.I,
+    ):
+        href = html_lib.unescape(raw).replace("\\/", "/")
+        if not EVENT_CODE_RE.search(urlparse(href).path):
+            continue
+        try:
+            code = _event_code(href)
+        except Exception:
+            continue
+        if code not in seen:
+            seen.add(code)
+            urls.append(href)
+
+    return urls
 
 
 def list_performances(title: str, production_url: str):
-    """
-    Load the Tallinna Linnateater organiser page from Piletilevi and return
-    only performances whose event title matches the selected production.
-    """
     title_norm = _norm(title)
 
     def build():
-        html = _get(PILETILEVI_ORGANIZER).text
-        soup = BeautifulSoup(html, "html.parser")
-        details = production_details(production_url)
-        image_url = details.get("image_url") or ""
+        event_urls, series_urls = _piletilevi_links_from_linnateater(
+            production_url
+        )
 
-        candidates = []
-        seen = set()
+        existing_codes = set()
+        for href in event_urls:
+            try:
+                existing_codes.add(_event_code(href))
+            except Exception:
+                pass
 
-        for a in soup.find_all("a", href=True):
-            href = urljoin(PILETILEVI_ORGANIZER, a.get("href") or "")
-            if not EVENT_CODE_RE.search(urlparse(href).path):
-                continue
+        for series_url in series_urls:
+            for href in _event_links_from_series(series_url):
+                try:
+                    code = _event_code(href)
+                except Exception:
+                    continue
+                if code not in existing_codes:
+                    existing_codes.add(code)
+                    event_urls.append(href)
 
-            event_code = _event_code(href)
-            if event_code in seen:
-                continue
-
-            anchor_text = _clean(a.get_text(" ", strip=True))
-            context = _context_for_anchor(a)
-            combined_norm = _norm(anchor_text + " " + context)
-
-            # Exact-ish production name matching. This intentionally allows
-            # suffixes such as replacement-performance notes.
-            if title_norm not in combined_norm:
-                continue
-
-            date_text = _extract_date_text(context)
-            if not date_text:
-                continue
-
-            seen.add(event_code)
-            candidates.append(
-                {
-                    "title": title,
-                    "date_text": date_text,
-                    "event_url": href,
-                    "event_code": event_code,
-                    "status": _status_from_context(context),
-                    "image_url": image_url,
-                    "production_url": production_url,
-                }
-            )
-
-        # Some Piletilevi list cards expose a click target around title/date in
-        # a way BeautifulSoup may not associate perfectly. If none were found,
-        # return an explicit error rather than silently showing an empty list.
-        if not candidates:
+        if not event_urls:
             raise RuntimeError(
-                "Piletilevist ei leitud sellele lavastusele tulevasi etendusi."
+                "Linnateatri lavastuse lehelt ei leitud Piletilevi "
+                "etenduste linke. Selle lavastuse piletid ei pruugi veel "
+                "müügis olla."
             )
 
-        # Resolve the series only once and reuse it for all performances.
-        series_url = _find_series_url(candidates[0]["event_url"])
-        for item in candidates:
-            item["series_url"] = series_url
+        production_image = page_image(production_url)
 
-        # dd.mm.yyyy can be sorted as yyyy-mm-dd after rearranging.
-        def key(item):
+        results = []
+        seen_codes = set()
+
+        for event_url in event_urls:
+            try:
+                item = _extract_event_page_info(event_url)
+            except Exception:
+                continue
+
+            code = item["event_code"]
+            if code in seen_codes:
+                continue
+
+            event_title_norm = _norm(
+                _strip_piletilevi_suffix(item.get("title") or "")
+            )
+
+            if title_norm and event_title_norm:
+                if (
+                    title_norm not in event_title_norm
+                    and event_title_norm not in title_norm
+                ):
+                    continue
+
+            if not item.get("date_text"):
+                continue
+
+            seen_codes.add(code)
+            item["title"] = title
+            item["production_url"] = production_url
+
+            if not item.get("image_url"):
+                item["image_url"] = production_image
+
+            if (
+                item.get("series_url") == item.get("event_url")
+                and series_urls
+            ):
+                item["series_url"] = series_urls[0]
+
+            results.append(item)
+
+        if not results:
+            raise RuntimeError(
+                "Piletilevi lingid leiti, kuid ühegi tulevase etenduse "
+                "kuupäeva ei õnnestunud lugeda."
+            )
+
+        def sort_key(item):
             m = re.match(
-                r"(\d{2})\.(\d{2})\.(\d{4})\s*•\s*(\d{2}):(\d{2})",
+                r"(\d{2})\.(\d{2})\.(\d{4})\s*•\s*(\d{1,2}):(\d{2})",
                 item["date_text"],
             )
             if not m:
                 return item["date_text"]
             d, mo, y, hh, mm = m.groups()
-            return f"{y}-{mo}-{d} {hh}:{mm}"
+            return f"{y}-{mo}-{d} {int(hh):02d}:{mm}"
 
-        candidates.sort(key=key)
-        return candidates
+        results.sort(key=sort_key)
+        return results
 
     return _cached(
-        "performances:" + title_norm + ":" + production_url,
+        "performances-v3:" + title_norm + ":" + production_url,
         120,
         build,
     )
+
+
+def tracker_image(title: str, event_url: str = "", production_url: str = ""):
+    if production_url:
+        try:
+            image = page_image(production_url)
+            if image:
+                return image, production_url
+        except Exception:
+            pass
+
+    if event_url:
+        try:
+            image = page_image(event_url)
+            if image:
+                return image, production_url
+        except Exception:
+            pass
+
+    production = production_for_title(title)
+    if production:
+        try:
+            image = page_image(production["production_url"])
+            return image, production["production_url"]
+        except Exception:
+            return "", production["production_url"]
+
+    return "", production_url
 
 
 def check_event(series_url: str, event_code: str):
@@ -315,17 +499,35 @@ def check_event(series_url: str, event_code: str):
             target = a
             break
 
-    if target is None:
-        # Fallback for cases where series_url is the event itself.
-        if event_code in html.upper():
-            body = _clean(soup.get_text(" ", strip=True))
-            status = _status_from_context(body[:4500])
-            return status == "Pilet saadaval", status
+    if target is not None:
+        node = target
+        context = _clean(target.get_text(" ", strip=True))
 
-        raise RuntimeError(
-            "Jälgitavat etendust ei leitud enam Piletilevi lehelt."
-        )
+        for _ in range(6):
+            node = getattr(node, "parent", None)
+            if node is None:
+                break
+            text = _clean(node.get_text(" ", strip=True))
+            if DATE_TIME_RE.search(text) and len(text) < 1000:
+                context = text
+                break
 
-    context = _context_for_anchor(target)
-    status = _status_from_context(context)
-    return status == "Pilet saadaval", status
+        low = _norm(context)
+        if "valja muudud" in low or "sold out" in low:
+            return False, "Välja müüdud"
+        if "muuk peatatud" in low or "suspended" in low:
+            return False, "Müük peatatud"
+        return True, "Pilet saadaval"
+
+    if event_code in html.upper() or "/piletid/" in urlparse(series_url).path:
+        body = _clean(soup.get_text(" ", strip=True))
+        low = _norm(body[:7000])
+        if "valja muudud" in low or "sold out" in low:
+            return False, "Välja müüdud"
+        if "muuk peatatud" in low or "suspended" in low:
+            return False, "Müük peatatud"
+        return True, "Pilet saadaval"
+
+    raise RuntimeError(
+        "Jälgitavat etendust ei leitud enam Piletilevi lehelt."
+    )
