@@ -1,12 +1,11 @@
-# Piletivaht v32
+# Piletivaht v33
 
-Built directly on v31.
+Built directly on v32.
 
-Only the production modal image presentation was changed:
-- no image-source or database-image logic changes;
-- modal now uses the exact same image without additional `cover` cropping;
-- modal image uses `object-fit: contain`;
-- black/dark image background removed and replaced with the same neutral background used by repertoire cards;
-- dark gradient overlay over the modal image removed.
-
-All v31 image storage rules and all other functionality remain unchanged.
+Only the modal layout was changed:
+- image source/storage logic is untouched;
+- modal image keeps its own aspect ratio (`width:100%; height:auto`);
+- no forced fixed-height image area, so no top/bottom letterbox bands;
+- production title is now a separate block below the image instead of an absolute overlay;
+- long production titles wrap and use a smaller responsive maximum font size;
+- mobile forced modal image height was removed.
