@@ -1,36 +1,71 @@
-# Linnateater Tracker v17
+# Linnateater Tracker v18
 
-## Faster repertoire again
+This release intentionally resets the architecture to the v10 version that
+performed well, then adds only the later features/fixes that are still needed.
 
-v17 returns to the lightweight v10-style image strategy. The repertoire uses
-the smaller card images from Linnateater's listing instead of large production
-page images, so the browser has much less image data to decode and render.
+## 1. v10 image architecture restored
 
-## Blur fix
+The repertoire uses the lightweight v10 production-card/image-cache behavior.
+The large-image changes introduced after v10 are not used.
 
-A few cards looked blurry because the parser could choose `<img src>` first.
-On lazy-loaded pages that can be a blurred placeholder.
+The login headline/spacing from v16 is preserved.
 
-v17 now chooses:
-1. the largest `data-srcset` / `srcset` candidate;
-2. `data-src` / lazy-loaded source;
-3. ordinary `src` only as a last fallback.
+## 2. Missing Piletilevi series mappings added
 
-So the images remain lightweight without selecting the blurred placeholder.
+Added:
+- Vaikus
+- Uskuja
+- Viimane liivlane
+- Esietendus
+- Suur veeuputus
+- Ülestähendusi põranda alt
+- Polkovniku lesk
+- Muusikale
+- Kolemees
 
-## Cache migration
+Existing mappings remain intact.
 
-The first v17 worker start force-refreshes the cached image URLs so the large
-v11-v16 images are replaced by the optimized card images.
+## 3. Performance dates are cached in PostgreSQL
 
-All later features remain unchanged, including:
-- multiple dates in one modal;
-- Repertuaar / Minu jälgimised;
-- password login;
+New table:
+
+    performance_cache
+
+The Railway worker refreshes performance lists in a separate background thread
+every 5 minutes. Each production uses the fast one-request Piletilevi series
+parser.
+
+The `/api/performances` modal endpoint:
+1. reads PostgreSQL first (normally instant);
+2. only contacts Piletilevi when the production has no cached data yet;
+3. saves that fallback result for later clicks.
+
+The background cache thread is completely separate from the 15–30 second ticket
+monitor cycle, so refreshing repertoire data cannot delay active tracker checks.
+
+## 4. Later features retained
+
+- multiple dates selectable at once;
+- Repertuaar / Minu jälgimised navigation;
+- phone + password login;
 - Twilio SMS alerts;
-- v16 login-page headline spacing.
+- existing trackers/database remain intact.
 
 ## Deploy
 
-Replace v16 files with this ZIP. Railway, PostgreSQL and Twilio settings stay
-unchanged.
+Replace v17 files with this ZIP.
+
+Do NOT change:
+- Railway services;
+- PostgreSQL;
+- Twilio variables;
+- web start command;
+- worker start command.
+
+After deployment, the worker log should show:
+
+    🎟 Refreshing performance cache in background...
+    🎟 Performance cache ready: ...
+
+Once that first cache pass completes, opening production modals should normally
+be served directly from PostgreSQL rather than waiting on Piletilevi.

@@ -19,6 +19,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from db import get_conn, init_db
 from image_cache import get_cached_images
+from performance_cache import get_cached_performances, save_cached_performances
 from ticket_source import (
     list_performances,
     list_productions,
@@ -435,8 +436,8 @@ def dashboard():
 
         for production in productions:
             production["display_image_url"] = (
-                cached_images.get(production["production_url"], "")
-                or production.get("image_url")
+                production.get("image_url")
+                or cached_images.get(production["production_url"], "")
             )
     except Exception as e:
         productions = []
@@ -505,8 +506,24 @@ def api_performances():
         return jsonify({"ok": False, "error": "Lavastus puudub."}), 400
 
     try:
+        # Fast path: PostgreSQL cache populated in the background worker.
+        cached = get_cached_performances(production_url)
+        if cached is not None:
+            return jsonify({
+                "ok": True,
+                "performances": cached,
+                "cached": True,
+            })
+
+        # First-ever fallback only. Still just one Piletilevi series request.
         items = list_performances(title, production_url)
-        return jsonify({"ok": True, "performances": items})
+        save_cached_performances(title, production_url, items)
+
+        return jsonify({
+            "ok": True,
+            "performances": items,
+            "cached": False,
+        })
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 502
 

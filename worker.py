@@ -1,5 +1,6 @@
 import os
 import random
+import threading
 import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -9,6 +10,7 @@ from twilio.rest import Client
 from db import get_conn, init_db
 from ticket_source import check_event
 from image_cache import refresh_production_images
+from performance_cache import refresh_all_performances
 
 
 TZ = ZoneInfo("Europe/Tallinn")
@@ -112,7 +114,7 @@ def maybe_refresh_image_cache(force=False):
 
     print("🖼 Refreshing Linnateater production image cache...", flush=True)
     try:
-        total, resolved = refresh_production_images(max_workers=6, force_all=force)
+        total, resolved = refresh_production_images(max_workers=6)
         _last_image_refresh = time.monotonic()
         print(
             f"🖼 Image cache ready: {resolved} refreshed / "
@@ -166,9 +168,38 @@ def run_cycle():
     print("=" * 72, flush=True)
 
 
+def performance_cache_loop():
+    """
+    Keep the modal data warm without ever blocking normal ticket checks.
+    """
+    while True:
+        print("🎟 Refreshing performance cache in background...", flush=True)
+        try:
+            refreshed, item_count = refresh_all_performances(max_workers=6)
+            print(
+                f"🎟 Performance cache ready: "
+                f"{refreshed} productions / {item_count} performances.",
+                flush=True,
+            )
+        except Exception as error:
+            print(
+                f"⚠️ Performance cache refresh failed: "
+                f"{type(error).__name__}: {error}",
+                flush=True,
+            )
+
+        time.sleep(5 * 60)
+
+
 def main():
     init_db()
     print("Linnateater worker started", flush=True)
+
+    threading.Thread(
+        target=performance_cache_loop,
+        name="performance-cache",
+        daemon=True,
+    ).start()
     print(
         f"Pause between completed cycles: {MIN_WAIT}–{MAX_WAIT} seconds",
         flush=True,

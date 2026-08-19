@@ -51,6 +51,15 @@ SERIES_BY_TITLE = {
     "sinisilmsed": "https://www.piletilevi.ee/series/M6A5FX7IFF/sinisilmsed-tallinna-linnateater",
     "sudameharjutus": "https://www.piletilevi.ee/series/AOKECBOEM7/sudameharjutus-tallinna-linnateater",
     "toeline laas": "https://www.piletilevi.ee/series/IOQMPZIKQQ/toeline-laas-tallinna-linnateater",
+    "vaikus": "https://www.piletilevi.ee/series/WWKGMZ7QQ6/vaikus-tallinna-linnateater",
+    "uskuja": "https://www.piletilevi.ee/series/H2NP54KXDK/uskuja-tallinna-linnateater",
+    "viimane liivlane": "https://www.piletilevi.ee/series/NKQM4C7JJX/viimane-liivlane-tallinna-linnateater",
+    "esietendus": "https://www.piletilevi.ee/series/RPOJD7WU2U/esietendus-tallinna-linnateater",
+    "suur veeuputus": "https://www.piletilevi.ee/series/WGUSVTVWKZ/suur-veeuputus-tallinna-linnateater",
+    "ulestahendusi poranda alt": "https://www.piletilevi.ee/series/EDARZX4WGV/ulestahendusi-poranda-alt-tallinna-linnateater",
+    "polkovniku lesk": "https://www.piletilevi.ee/series/G264CC2NRZ/polkovniku-lesk-tallinna-linnateater",
+    "muusikale": "https://www.piletilevi.ee/series/CUSM4F3HZ3/muusikale-tallinna-linnateater",
+    "kolemees": "https://www.piletilevi.ee/series/7H7GDIRQWB/kolemees-tallinna-linnateater",
 }
 
 
@@ -216,112 +225,61 @@ def page_image(url: str) -> str:
     return _cached("image:" + url, 1800, build)
 
 
-def _best_srcset_url(srcset: str, base_url: str) -> str:
-    """
-    Pick the largest candidate from a srcset by numeric width when possible.
-    """
-    parsed = []
-    for part in (srcset or "").split(","):
-        part = part.strip()
-        if not part:
-            continue
-        bits = part.split()
-        url = bits[0]
-        width = 0
-        if len(bits) > 1:
-            m = re.match(r"(\d+)w$", bits[1])
-            if m:
-                width = int(m.group(1))
-        parsed.append((width, url))
-
-    if not parsed:
-        return ""
-
-    parsed.sort(key=lambda x: x[0])
-    return urljoin(base_url, parsed[-1][1])
-
-
 def _image_from_node(node, base_url: str):
     """
-    Extract the lightweight production-card image from Linnateater's listing.
-
-    Lazy-loaded cards may put a blurred placeholder in `src`, while the real
-    image lives in `srcset`, `data-srcset` or `data-src`.
+    Extract an image already present in the production-list card markup.
+    This avoids opening every individual production page.
     """
     if node is None:
         return ""
 
-    def from_img(img):
-        if not img:
-            return ""
-
-        srcset = img.get("data-srcset") or img.get("srcset")
-        best = _best_srcset_url(srcset, base_url)
-        if best:
-            return best
-
-        for attr in (
-            "data-src",
-            "data-lazy-src",
-            "data-original",
-            "data-image",
-        ):
+    # Prefer image elements inside the card/link.
+    img = node.find("img")
+    if img:
+        for attr in ("src", "data-src", "data-lazy-src", "data-original"):
             value = img.get(attr)
             if value and not value.startswith("data:"):
                 return urljoin(base_url, value)
 
-        value = img.get("src")
-        if value and not value.startswith("data:"):
-            low = value.lower()
-            if not any(token in low for token in (
-                "placeholder",
-                "blur",
-                "tiny",
-                "1x1",
-            )):
-                return urljoin(base_url, value)
+        srcset = img.get("srcset") or img.get("data-srcset")
+        if srcset:
+            # Usually the last candidate is the largest.
+            candidates = []
+            for part in srcset.split(","):
+                value = part.strip().split(" ")[0]
+                if value:
+                    candidates.append(value)
+            if candidates:
+                return urljoin(base_url, candidates[-1])
 
-        return ""
-
-    image = from_img(node.find("img"))
-    if image:
-        return image
-
-    source = node.find("source")
-    if source:
-        best = _best_srcset_url(
-            source.get("data-srcset") or source.get("srcset") or "",
-            base_url,
-        )
-        if best:
-            return best
-
+    # Background-image fallback.
     style = node.get("style") or ""
     m = re.search(r'url\((["\']?)(.*?)\1\)', style, flags=re.I)
     if m and m.group(2):
         return urljoin(base_url, m.group(2))
 
+    # Look one level up; some sites place the image beside the anchor text.
     parent = getattr(node, "parent", None)
-    for _ in range(3):
-        if parent is None:
-            break
+    if parent is not None:
+        img = parent.find("img")
+        if img:
+            for attr in ("src", "data-src", "data-lazy-src", "data-original"):
+                value = img.get(attr)
+                if value and not value.startswith("data:"):
+                    return urljoin(base_url, value)
 
-        image = from_img(parent.find("img"))
-        if image:
-            return image
-
-        source = parent.find("source")
-        if source:
-            best = _best_srcset_url(
-                source.get("data-srcset") or source.get("srcset") or "",
-                base_url,
-            )
-            if best:
-                return best
-
-        parent = getattr(parent, "parent", None)
+            srcset = img.get("srcset") or img.get("data-srcset")
+            if srcset:
+                candidates = [
+                    part.strip().split(" ")[0]
+                    for part in srcset.split(",")
+                    if part.strip()
+                ]
+                if candidates:
+                    return urljoin(base_url, candidates[-1])
 
     return ""
+
 
 def list_productions():
     """
@@ -383,32 +341,23 @@ def list_productions():
     return _cached("productions-v9", 300, build)
 
 
-
-def _listing_image_for_title(title: str) -> str:
-    wanted = _norm(title)
-    try:
-        for item in list_productions():
-            if _norm(item.get("title") or "") == wanted and item.get("image_url"):
-                return item["image_url"]
-    except Exception:
-        pass
-    return ""
-
-
 def production_image(title: str, production_url: str) -> str:
     """
-    Fast card-image resolver.
+    Best-effort image resolver with layered fallbacks.
 
-    1. Optimized Linnateater listing thumbnail.
-    2. Individual Linnateater production page only as fallback.
-    3. Matching Piletilevi series page as final fallback.
+    1. Thumbnail already present on the Linnateater productions listing.
+    2. Individual Linnateater production page.
+    3. Matching Piletilevi series page.
+
+    The caller persists the result in PostgreSQL, so this expensive work is
+    normally performed only once per production/cache period.
     """
     wanted = _norm(title)
 
     try:
-        image = _listing_image_for_title(title)
-        if image:
-            return image
+        for item in list_productions():
+            if _norm(item["title"]) == wanted and item.get("image_url"):
+                return item["image_url"]
     except Exception:
         pass
 
