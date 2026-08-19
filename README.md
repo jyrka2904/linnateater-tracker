@@ -1,29 +1,37 @@
-# Linnateater Tracker v10
+# Linnateater Tracker v11
 
-## Images without page lag
+## Fix: blurry production images
 
-Production image discovery is no longer done by the user's browser.
+Some production cards were still using lower-resolution thumbnail images from
+the Linnateater listing page. That is why cards such as "Alguses oli laul" and
+"Esietendus" could look blurry.
 
-The Railway worker now refreshes the production image cache at startup and then
-periodically. Successful image URLs are persisted in PostgreSQL. The repertoire
-page only reads cached URLs and uses browser-native lazy image loading.
+v11 changes the image priority:
 
-After the first v10 worker deployment, allow a short moment for previously
-missing images to be cached. Future page loads do not wait for external image
-discovery.
+1. high-resolution image from the individual Linnateater production page;
+2. high-resolution fallback from the matching Piletilevi series page;
+3. only if neither exists, the smaller listing thumbnail.
 
-## Multi-select performance dates
+## Important deployment behavior
 
-Inside the production modal, performance dates are toggles. You can select
-several dates from the same production and then press one button, for example:
+On the first v11 worker start, the image cache is refreshed with `force_all`,
+so previously cached low-resolution image URLs are replaced with better ones.
 
-    Jälgi 3 etendust
+That means:
+- deploy v11;
+- let the worker run for a moment;
+- then hard refresh the browser.
 
-Each selected date is stored as its own tracker. The app respects the remaining
-tracker limit and revalidates the chosen event codes against the Piletilevi
-series data before inserting them.
+After that, the sharper images should appear on the production cards.
+
+## Other behavior unchanged
+
+- multi-select dates in the modal;
+- separate Repertuaar / Minu jälgimised views;
+- phone + password login;
+- Twilio SMS alerts.
 
 ## Deploy
 
-Replace v9 files with this ZIP. Railway, PostgreSQL and Twilio settings remain
-unchanged.
+Replace v10 files with this ZIP. Railway, PostgreSQL and Twilio settings stay
+the same.

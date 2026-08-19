@@ -435,8 +435,8 @@ def dashboard():
 
         for production in productions:
             production["display_image_url"] = (
-                production.get("image_url")
-                or cached_images.get(production["production_url"], "")
+                cached_images.get(production["production_url"], "")
+                or production.get("image_url")
             )
     except Exception as e:
         productions = []

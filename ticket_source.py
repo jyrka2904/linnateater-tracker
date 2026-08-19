@@ -332,25 +332,28 @@ def list_productions():
     return _cached("productions-v9", 300, build)
 
 
-def production_image(title: str, production_url: str) -> str:
-    """
-    Best-effort image resolver with layered fallbacks.
 
-    1. Thumbnail already present on the Linnateater productions listing.
-    2. Individual Linnateater production page.
-    3. Matching Piletilevi series page.
-
-    The caller persists the result in PostgreSQL, so this expensive work is
-    normally performed only once per production/cache period.
-    """
+def _listing_image_for_title(title: str) -> str:
     wanted = _norm(title)
-
     try:
         for item in list_productions():
-            if _norm(item["title"]) == wanted and item.get("image_url"):
+            if _norm(item.get("title") or "") == wanted and item.get("image_url"):
                 return item["image_url"]
     except Exception:
         pass
+    return ""
+
+
+def production_image(title: str, production_url: str) -> str:
+    """
+    Prefer higher-quality images for card display and caching.
+
+    Order:
+    1. individual Linnateater production page (usually larger image)
+    2. matching Piletilevi series page
+    3. fallback listing thumbnail from Linnateater productions page
+    """
+    wanted = _norm(title)
 
     try:
         image = page_image(production_url)
@@ -367,6 +370,13 @@ def production_image(title: str, production_url: str) -> str:
                 return image
         except Exception:
             pass
+
+    try:
+        image = _listing_image_for_title(title)
+        if image:
+            return image
+    except Exception:
+        pass
 
     return ""
 

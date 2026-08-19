@@ -26,12 +26,18 @@ def get_cached_images(productions):
     return result
 
 
-def refresh_production_images(max_workers=6):
+def refresh_production_images(max_workers=6, force_all=False):
+    """
+    Refresh production images.
+
+    force_all=True is used on deployment/startup so older low-resolution cached
+    thumbnails from previous versions are replaced with higher-quality images.
+    """
     productions = list_productions()
     if not productions:
         return 0, 0
 
-    by_url = {p['production_url']: p for p in productions}
+    by_url = {p["production_url"]: p for p in productions}
     urls = list(by_url)
 
     fresh = {}
@@ -48,21 +54,18 @@ def refresh_production_images(max_workers=6):
                 (urls,),
             )
             for row in cur.fetchall():
-                fresh[row['production_url']] = row['image_url']
+                fresh[row["production_url"]] = row["image_url"]
 
-    missing = [url for url in urls if url not in fresh]
+    missing = urls if force_all else [url for url in urls if url not in fresh]
     if not missing:
         return len(productions), 0
 
     def fetch_one(url):
         item = by_url[url]
-        listed = item.get('image_url') or ''
-        if listed:
-            return url, listed
         try:
-            return url, production_image(item['title'], item['production_url'])
+            return url, production_image(item["title"], item["production_url"])
         except Exception:
-            return url, ''
+            return url, ""
 
     fetched = {}
     with ThreadPoolExecutor(max_workers=max_workers) as pool:

@@ -112,7 +112,7 @@ def maybe_refresh_image_cache(force=False):
 
     print("🖼 Refreshing Linnateater production image cache...", flush=True)
     try:
-        total, resolved = refresh_production_images(max_workers=6)
+        total, resolved = refresh_production_images(max_workers=6, force_all=force)
         _last_image_refresh = time.monotonic()
         print(
             f"🖼 Image cache ready: {resolved} refreshed / "
