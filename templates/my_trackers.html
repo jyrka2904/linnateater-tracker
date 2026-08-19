@@ -4,7 +4,7 @@
 <header class="topbar">
   <a class="logo" href="/dashboard">
     <img class="logo-icon" src="{{ url_for('static', filename='logo-piletivaht.svg') }}" alt="">
-    <span class="logo-stack"><strong>Piletivaht</strong><small>teatrite piletijälgija</small></span>
+    <span class="logo-stack"><strong>Piletivaht</strong><small>teatripiletite jälgija</small></span>
   </a>
   <nav class="main-nav">
     <a href="/dashboard">Repertuaar</a>
@@ -19,31 +19,14 @@
 </header>
 
 <main class="main">
-  <section class="hero">
+  <section class="page-intro">
     <div>
       <div class="kicker">Minu jälgimised</div>
-      <h1>Sinu radar.<br>Ühes vaates.</h1>
-      <div>
-        <span class="hero-chip">{{ tracker_count }} aktiivset etendust</span>
-        <span class="hero-chip">SMS teavitus kohe, kui pilet tekib</span>
-      </div>
+      <h1>Aktiivsed etendused.</h1>
     </div>
-    <div class="hero-side">
-      <p class="hero-copy">
-        Hoia kõik jälgitavad etendused ühes kohas. Kui lisame järgmised teatrid, kuvatakse need samas nimekirjas koos teatri- ja kuupäevafiltritega.
-      </p>
-      <div class="hero-panel">
-        <div class="stat-card">
-          <div class="stat-label">Aktiivsed</div>
-          <div class="stat-value">{{ tracker_count }}</div>
-          <div class="stat-note">Jälgimist praegu töös.</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Mahutavus</div>
-          <div class="stat-value">{{ max_trackers }}</div>
-          <div class="stat-note">Maksimaalne jälgimiste arv konto kohta.</div>
-        </div>
-      </div>
+    <div class="intro-meta">
+      <span class="intro-pill">{{ tracker_count }} / {{ max_trackers }} aktiivset</span>
+      <span class="intro-pill">SMS teavitus aktiivne</span>
     </div>
   </section>
 

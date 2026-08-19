@@ -4,7 +4,7 @@
 <header class="topbar">
   <a class="logo" href="/dashboard">
     <img class="logo-icon" src="{{ url_for('static', filename='logo-piletivaht.svg') }}" alt="">
-    <span class="logo-stack"><strong>Piletivaht</strong><small>teatrite piletijälgija</small></span>
+    <span class="logo-stack"><strong>Piletivaht</strong><small>teatripiletite jälgija</small></span>
   </a>
   <nav class="main-nav">
     <a class="active" href="/dashboard">Repertuaar</a>
@@ -19,32 +19,14 @@
 </header>
 
 <main class="main">
-  <section class="hero">
+  <section class="page-intro">
     <div>
-      <div class="kicker">Teatrite piletijälgija</div>
-      <h1>Piletid. Ühes kohas.<br>Valmis järgmisteks teatriteks.</h1>
-      <div>
-        <span class="hero-chip">{{ tracker_count }} aktiivset jälgimist</span>
-        <span class="hero-chip">{{ theatre_options|length or 1 }} teater täna</span>
-        <span class="hero-chip">Valmis ka Draamateatri ja teiste jaoks</span>
-      </div>
+      <div class="kicker">Repertuaar</div>
+      <h1>Leia etendus, mida jälgida.</h1>
     </div>
-    <div class="hero-side">
-      <p class="hero-copy">
-        Täna saad jälgida <strong>Tallinna Linnateatri</strong> etendusi. Kujundus ja filtrid on nüüd valmis ka teiste teatrite lisamiseks — vali teater, kuupäev ja lavastus ühest kohast.
-      </p>
-      <div class="hero-panel">
-        <div class="stat-card">
-          <div class="stat-label">Repertuaar</div>
-          <div class="stat-value">{{ productions|length }}</div>
-          <div class="stat-note">Lavastust praegu nähtaval.</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Jälgimismahtu</div>
-          <div class="stat-value">{{ remaining_slots }}</div>
-          <div class="stat-note">Vaba kohta uute etenduste lisamiseks.</div>
-        </div>
-      </div>
+    <div class="intro-meta">
+      <span class="intro-pill">{{ productions|length }} lavastust</span>
+      <span class="intro-pill">{{ tracker_count }} aktiivset jälgimist</span>
     </div>
   </section>
 

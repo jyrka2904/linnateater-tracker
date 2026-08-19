@@ -529,6 +529,151 @@
       .hero h1{font-size:clamp(46px,14vw,78px)}
     }
 
+
+    /* v28: compact headers, stronger branding, unified typography */
+    html,body,button,input,select,textarea{
+      font-family:"Avenir Next","Segoe UI",Helvetica,Arial,sans-serif;
+    }
+    body{
+      font-weight:450;
+      letter-spacing:-.01em;
+    }
+    h1,h2,h3,h4,h5,h6,
+    .logo-stack strong,
+    .section-title,
+    .production-title,
+    .tracker-title,
+    .modal-title,
+    .stat-value,
+    .auth-box h2,
+    .auth-art h1{
+      font-family:inherit;
+    }
+    .topbar{
+      min-height:88px;
+      padding:0 26px;
+    }
+    .logo{
+      gap:15px;
+      min-width:max-content;
+    }
+    .logo-icon{
+      width:50px;
+      height:50px;
+      flex:0 0 50px;
+    }
+    .logo-stack{
+      gap:5px;
+    }
+    .logo-stack strong{
+      font-size:27px;
+      line-height:.92;
+      font-weight:800;
+      letter-spacing:-.045em;
+    }
+    .logo-stack small{
+      font-size:10px;
+      font-weight:650;
+      letter-spacing:.17em;
+      color:rgba(255,255,255,.64);
+    }
+    .main-nav a,
+    .nav-btn,
+    .filter-label,
+    .filter-reset,
+    .kicker{
+      font-family:inherit;
+    }
+    .main{
+      padding-top:18px;
+    }
+    .page-intro{
+      min-height:118px;
+      padding:25px 30px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:24px;
+      background:rgba(255,255,255,.72);
+      backdrop-filter:blur(12px);
+      border:1px solid rgba(255,255,255,.50);
+      border-radius:22px;
+      box-shadow:0 16px 40px rgba(17,17,18,.06);
+    }
+    .page-intro .kicker{
+      margin:0 0 7px;
+      font-size:10px;
+      letter-spacing:.16em;
+      font-weight:750;
+    }
+    .page-intro h1{
+      margin:0;
+      font-size:clamp(30px,3.4vw,48px);
+      line-height:.98;
+      letter-spacing:-.055em;
+      font-weight:760;
+    }
+    .intro-meta{
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      gap:9px;
+      flex-wrap:wrap;
+    }
+    .intro-pill{
+      display:inline-flex;
+      align-items:center;
+      height:38px;
+      padding:0 13px;
+      border-radius:999px;
+      background:rgba(255,255,255,.88);
+      border:1px solid rgba(16,17,19,.09);
+      color:#544e48;
+      font-size:12px;
+      font-weight:650;
+      white-space:nowrap;
+    }
+    .section-title{
+      font-weight:760;
+      letter-spacing:-.045em;
+    }
+    .production-title,
+    .tracker-title{
+      font-weight:760;
+    }
+    .production-index,
+    .tracker-theatre,
+    .filter-label,
+    .status-pill,
+    .watch-btn{
+      font-weight:700;
+    }
+    .filter-control,
+    .search,
+    .section-note,
+    .filter-help,
+    .tracker-date,
+    .tracker-meta,
+    .production-meta{
+      font-weight:450;
+    }
+    .auth-art h1{
+      font-weight:760;
+      letter-spacing:-.06em;
+    }
+    .auth-box h2{
+      font-weight:760;
+      letter-spacing:-.05em;
+    }
+    @media(max-width:760px){
+      .topbar{min-height:76px}
+      .logo-icon{width:42px;height:42px;flex-basis:42px}
+      .logo-stack strong{font-size:22px}
+      .page-intro{min-height:auto;padding:21px;align-items:flex-start;flex-direction:column}
+      .intro-meta{justify-content:flex-start}
+      .page-intro h1{font-size:34px}
+    }
+
   </style>
   {% block head %}{% endblock %}
 </head>
