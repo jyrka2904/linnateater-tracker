@@ -1,17 +1,26 @@
-# Piletivaht v30
+# Piletivaht v31
 
-Built directly on v29.
+Built directly on v30.
 
-Changes:
-- restored the old warm off-white page background (#efede8) for logged-in pages;
-- restored the login split to solid red left + warm off-white right;
-- made Repertuaar / Minu jälgimised navigation larger;
-- made the phone number beside Logi välja larger;
-- unified typography around Segoe UI / Arial / Helvetica;
-- replaced native date inputs with a small Estonian/European calendar whose week is E T K N R L P (Monday–Sunday);
-- production image storage now treats the repertoire thumbnail as the visual source of truth;
-- a larger production-page image may be used only when a strict perceptual comparison says it is the same visual;
-- otherwise the repertoire image is stored unchanged;
-- transparent images remain transparent instead of being flattened to black.
+## Image rule is now absolute
 
-No other tracker, Twilio, performance-cache or monitoring logic was changed.
+v31 removes all alternative image selection.
+
+For every production, the ONLY permitted source is the image element used by
+Tallinna Linnateater's repertoire/listing card. If that same element contains
+`srcset`/`data-srcset`, the largest candidate from that same element may be
+used. No image from the individual production page, gallery or Piletilevi may
+replace it.
+
+This guarantees that the stored image cannot suddenly become a different
+press photo, cut-out person, alternate artwork, or artwork with a different
+background.
+
+The image is stored in PostgreSQL without cropping and without flattening
+transparency onto a newly created background. A proportional downscale is the
+only allowed transformation.
+
+The worker rewrites the complete stored image library immediately on startup,
+so old alternative images from previous versions are replaced automatically.
+
+All v30 UI/calendar/background/font changes remain unchanged.

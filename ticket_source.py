@@ -225,61 +225,101 @@ def page_image(url: str) -> str:
     return _cached("image:" + url, 1800, build)
 
 
+def _largest_srcset_candidate(srcset: str, base_url: str) -> str:
+    """Return the largest candidate from one img/source srcset."""
+    candidates = []
+
+    for part in (srcset or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+
+        pieces = part.split()
+        url = pieces[0]
+        score = 0.0
+
+        if len(pieces) > 1:
+            descriptor = pieces[1].lower()
+            try:
+                if descriptor.endswith("w"):
+                    score = float(descriptor[:-1])
+                elif descriptor.endswith("x"):
+                    # Give density candidates a useful sortable score.
+                    score = float(descriptor[:-1]) * 1000
+            except ValueError:
+                score = 0.0
+
+        candidates.append((score, url))
+
+    if not candidates:
+        return ""
+
+    candidates.sort(key=lambda item: item[0])
+    return urljoin(base_url, candidates[-1][1])
+
+
 def _image_from_node(node, base_url: str):
     """
-    Extract an image already present in the production-list card markup.
-    This avoids opening every individual production page.
+    Return ONLY the image used by the Linnateater repertoire card.
+
+    No production-page image is considered here. If the same <img>/<picture>
+    element exposes a larger responsive variant, that is safe because it is
+    still the exact same repertoire artwork.
     """
     if node is None:
         return ""
 
-    # Prefer image elements inside the card/link.
-    img = node.find("img")
-    if img:
-        for attr in ("src", "data-src", "data-lazy-src", "data-original"):
-            value = img.get(attr)
-            if value and not value.startswith("data:"):
-                return urljoin(base_url, value)
+    def image_from_container(container):
+        if container is None:
+            return ""
 
-        srcset = img.get("srcset") or img.get("data-srcset")
-        if srcset:
-            # Usually the last candidate is the largest.
-            candidates = []
-            for part in srcset.split(","):
-                value = part.strip().split(" ")[0]
-                if value:
-                    candidates.append(value)
-            if candidates:
-                return urljoin(base_url, candidates[-1])
-
-    # Background-image fallback.
-    style = node.get("style") or ""
-    m = re.search(r'url\((["\']?)(.*?)\1\)', style, flags=re.I)
-    if m and m.group(2):
-        return urljoin(base_url, m.group(2))
-
-    # Look one level up; some sites place the image beside the anchor text.
-    parent = getattr(node, "parent", None)
-    if parent is not None:
-        img = parent.find("img")
+        img = container.find("img")
         if img:
-            for attr in ("src", "data-src", "data-lazy-src", "data-original"):
+            # Largest variant of the SAME img element comes first.
+            srcset = img.get("data-srcset") or img.get("srcset") or ""
+            largest = _largest_srcset_candidate(srcset, base_url)
+            if largest:
+                return largest
+
+            # Lazy-loaded source from that same element.
+            for attr in (
+                "data-src",
+                "data-lazy-src",
+                "data-original",
+                "src",
+            ):
                 value = img.get(attr)
                 if value and not value.startswith("data:"):
                     return urljoin(base_url, value)
 
-            srcset = img.get("srcset") or img.get("data-srcset")
-            if srcset:
-                candidates = [
-                    part.strip().split(" ")[0]
-                    for part in srcset.split(",")
-                    if part.strip()
-                ]
-                if candidates:
-                    return urljoin(base_url, candidates[-1])
+        # A <picture> may expose the larger version in <source>. This is still
+        # the same card artwork, not a different production-page photograph.
+        source = container.find("source")
+        if source:
+            srcset = source.get("data-srcset") or source.get("srcset") or ""
+            largest = _largest_srcset_candidate(srcset, base_url)
+            if largest:
+                return largest
+
+        return ""
+
+    # Look at the current production-card subtree first.
+    image = image_from_container(node)
+    if image:
+        return image
+
+    # Walk only through nearby listing-card wrappers. We never open or inspect
+    # the individual production page here.
+    parent = getattr(node, "parent", None)
+    for _ in range(5):
+        image = image_from_container(parent)
+        if image:
+            return image
+        parent = getattr(parent, "parent", None)
+        if parent is None:
+            break
 
     return ""
-
 
 def list_productions():
     """
