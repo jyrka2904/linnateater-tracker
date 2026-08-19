@@ -1,41 +1,38 @@
-# Linnateater Tracker v8
+# Linnateater Tracker v9
 
-## Faster production images
+## Fix: fake "Lavastused A-Z" production
 
-The repertoire renders immediately with placeholders.
+The production parser now reads only real production title links inside H2
+elements on Linnateater's productions page.
 
-After first paint, the browser makes ONE request to `/api/production-images`.
-The server:
-- reads cached production image URLs from PostgreSQL;
-- fetches only missing/stale Linnateater production pages;
-- fetches missing pages concurrently (up to 8 at once);
-- persists the resulting image URLs for 7 days.
+Navigation/actions such as:
+- Lavastused A-Z
+- Uuemad eespool
+- Liitu uudiskirjaga
+- Lavastuste arhiiv
 
-The browser then assigns the URLs to lazy/async `<img>` elements.
+can no longer enter the tracker repertoire.
 
-Result: images return to the repertoire without 20-30 sequential requests on
-every page visit.
+## Fix: more complete production images
 
-## Much faster performance picker
+Image resolution now uses layered fallbacks:
 
-v7 opened every concrete Piletilevi event page separately.
+1. image already embedded in the Linnateater production-list card;
+2. individual Linnateater production page;
+3. matching Piletilevi series page.
 
-v8 uses ONE Piletilevi series-page request. The series page already contains:
-- concrete event URL;
-- event code;
-- date;
-- time;
-- sold-out / available state.
+Additional HTML image forms are supported:
+- `<source srcset>`
+- lazy-loading attributes
+- data-background/data-image attributes
+- CSS/background URLs
 
-This should make the modal noticeably faster.
+Results are saved in the existing PostgreSQL image cache.
 
-## Separate navigation
+Important: v9 retries cache rows whose previous image value was empty, so the
+grey cards created by v8 can repair themselves after deployment.
 
-Top navigation now has:
-- Repertuaar
-- Minu jälgimised
+## Deploy
 
-`/dashboard` contains only production discovery/selection.
-`/my-trackers` contains the active monitored performances.
-
-Railway, PostgreSQL and Twilio settings do not need to change.
+Replace v8 repository files with this ZIP.
+No Railway/Twilio/PostgreSQL configuration changes are required.

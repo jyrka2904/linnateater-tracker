@@ -124,7 +124,13 @@ def _image_candidates(soup, raw_html: str, base_url: str):
             candidates.append(tag["content"])
 
     for img in soup.find_all("img"):
-        for attr in ("src", "data-src", "data-lazy-src", "data-original"):
+        for attr in (
+            "src",
+            "data-src",
+            "data-lazy-src",
+            "data-original",
+            "data-image",
+        ):
             value = img.get(attr)
             if value:
                 candidates.append(value)
@@ -135,6 +141,25 @@ def _image_candidates(soup, raw_html: str, base_url: str):
                 url = part.strip().split(" ")[0]
                 if url:
                     candidates.append(url)
+
+    for source in soup.find_all("source"):
+        srcset = source.get("srcset") or source.get("data-srcset")
+        if srcset:
+            for part in srcset.split(","):
+                value = part.strip().split(" ")[0]
+                if value:
+                    candidates.append(value)
+
+    for node in soup.find_all(True):
+        for attr in (
+            "data-bg",
+            "data-background",
+            "data-background-image",
+            "data-image",
+        ):
+            value = node.get(attr)
+            if value:
+                candidates.append(value)
 
     for match in re.findall(
         r'(?:url\(|["\'])(https?://[^"\'()\\\s]+?\.(?:jpg|jpeg|png|webp)(?:\?[^"\'()\\\s]*)?)',
@@ -248,46 +273,102 @@ def _image_from_node(node, base_url: str):
 
 
 def list_productions():
+    """
+    Read ONLY actual production-title H2 links from Linnateater.
+
+    Earlier versions iterated every /lavastused/ anchor, which accidentally
+    included navigation links such as "Lavastused A–Z".
+    """
     def build():
         html = _get(LINNATEATER_PRODUCTIONS).text
         soup = BeautifulSoup(html, "html.parser")
         found = {}
 
-        for a in soup.find_all("a", href=True):
-            href = urljoin(LINNATEATER_PRODUCTIONS, a["href"])
-            if "/lavastused/" not in href:
-                continue
-            if href.rstrip("/") == LINNATEATER_PRODUCTIONS.rstrip("/"):
+        for heading in soup.find_all("h2"):
+            a = heading.find("a", href=True)
+            if not a:
                 continue
 
-            title = ""
-            heading = a.find(["h1", "h2", "h3"])
-            if heading:
-                title = _clean(heading.get_text(" ", strip=True))
+            href = urljoin(LINNATEATER_PRODUCTIONS, a.get("href") or "")
+            path = urlparse(href).path.rstrip("/")
+
+            # A real production lives one level below /lavastused/.
+            if not path.startswith("/lavastused/"):
+                continue
+
+            slug = path.split("/")[-1]
+            if not slug or slug == "lavastused":
+                continue
+
+            title = _clean(a.get_text(" ", strip=True))
             if not title:
-                title = _clean(a.get_text(" ", strip=True))
-
-            if not title or title.lower() in {
-                "lavastused",
-                "lavastuste arhiiv",
-                "piletid",
-            }:
                 continue
 
-            slug = urlparse(href).path.rstrip("/").split("/")[-1]
             key = _norm(title)
-            if key and key not in found:
-                found[key] = {
-                    "title": title,
-                    "production_url": href,
-                    "slug": slug,
-                    "image_url": _image_from_node(a, LINNATEATER_PRODUCTIONS),
-                }
+            if key in found:
+                continue
+
+            # Try the nearest card/container for a thumbnail already present
+            # in the listing HTML.
+            image_url = ""
+            node = heading
+            for _ in range(5):
+                image_url = _image_from_node(node, LINNATEATER_PRODUCTIONS)
+                if image_url:
+                    break
+                node = getattr(node, "parent", None)
+                if node is None:
+                    break
+
+            found[key] = {
+                "title": title,
+                "production_url": href,
+                "slug": slug,
+                "image_url": image_url,
+            }
 
         return sorted(found.values(), key=lambda x: x["title"].casefold())
 
-    return _cached("productions", 300, build)
+    return _cached("productions-v9", 300, build)
 
+
+def production_image(title: str, production_url: str) -> str:
+    """
+    Best-effort image resolver with layered fallbacks.
+
+    1. Thumbnail already present on the Linnateater productions listing.
+    2. Individual Linnateater production page.
+    3. Matching Piletilevi series page.
+
+    The caller persists the result in PostgreSQL, so this expensive work is
+    normally performed only once per production/cache period.
+    """
+    wanted = _norm(title)
+
+    try:
+        for item in list_productions():
+            if _norm(item["title"]) == wanted and item.get("image_url"):
+                return item["image_url"]
+    except Exception:
+        pass
+
+    try:
+        image = page_image(production_url)
+        if image:
+            return image
+    except Exception:
+        pass
+
+    series_url = SERIES_BY_TITLE.get(wanted)
+    if series_url:
+        try:
+            image = page_image(series_url)
+            if image:
+                return image
+        except Exception:
+            pass
+
+    return ""
 
 def production_for_title(title: str):
     wanted = _norm(_strip_piletilevi_suffix(title))

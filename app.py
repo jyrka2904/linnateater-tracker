@@ -22,6 +22,7 @@ from ticket_source import (
     list_performances,
     list_productions,
     page_image,
+    production_image,
     tracker_image,
 )
 
@@ -492,13 +493,21 @@ def api_production_images():
             for row in cur.fetchall():
                 cached[row["production_url"]] = row["image_url"]
 
-    missing = [url for url in urls if url not in cached]
+    by_url = {
+        p["production_url"]: p
+        for p in productions
+    }
+    missing = [url for url in urls if url not in cached or not cached[url]]
 
-    # One batch request from the browser, concurrent work server-side.
+    # One browser request; missing images are resolved concurrently and cached.
     if missing:
         def fetch_one(url):
+            item = by_url[url]
             try:
-                return url, page_image(url)
+                return url, production_image(
+                    item["title"],
+                    item["production_url"],
+                )
             except Exception:
                 return url, ""
 
@@ -536,13 +545,20 @@ def api_production_images():
 @login_required
 def api_production_image():
     production_url = (request.args.get("production_url") or "").strip()
+    title = (request.args.get("title") or "").strip()
+
     if not production_url.startswith("https://linnateater.ee/"):
         return jsonify({"ok": False, "error": "Vigane lavastuse link."}), 400
 
     try:
+        image = (
+            production_image(title, production_url)
+            if title
+            else page_image(production_url)
+        )
         return jsonify({
             "ok": True,
-            "image_url": page_image(production_url),
+            "image_url": image,
         })
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 502
