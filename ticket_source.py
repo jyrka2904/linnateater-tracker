@@ -24,6 +24,36 @@ DATE_TIME_RE = re.compile(
 
 _cache = {}
 
+# Verified Piletilevi series URLs for current Tallinna Linnateater productions.
+# These series IDs remain stable for the lifetime of the production and are a
+# much more reliable bridge than trying to find ticket links on Linnateater's
+# dynamically rendered "Etendused" block.
+SERIES_BY_TITLE = {
+    "alguses oli laul": "https://www.piletilevi.ee/series/L5IUG4FOJT/alguses-oli-laul-tallinna-linnateater",
+    "annapurna": "https://www.piletilevi.ee/series/Q5NAYLMAR4/annapurna-tallinna-linnateater",
+    "avamine": "https://www.piletilevi.ee/series/SNH4ITZH2X/avamine-tallinna-linnateater",
+    "elu on unenagu": "https://www.piletilevi.ee/series/SWJ363TX5L/elu-on-unenagu-tallinna-linnateater",
+    "exit": "https://www.piletilevi.ee/series/O5OIWM2BWH/exit-tallinna-linnateater",
+    "iphigeneia agamemnon elektra": "https://www.piletilevi.ee/series/SO5I226DRM/iphigeneia-agamemnon-elektra-tallinna-linnateater",
+    "kaitumisreeglid tanapaeva uhiskonnas": "https://www.piletilevi.ee/series/6TK3F2QTEO/kaitumisreeglid-tanapaeva-uhiskonnas-tallinna-linnateater",
+    "karussell": "https://www.piletilevi.ee/series/OQLYXVFGWC/karussell-tallinna-linnateater",
+    "kiilaspaine lauljanna": "https://www.piletilevi.ee/series/XEASVWDB6Z/kiilaspaine-lauljanna-tallinna-linnateater",
+    "krum": "https://www.piletilevi.ee/series/A37XK2BVIM/krum-tallinna-linnateater",
+    "nachtland": "https://www.piletilevi.ee/series/TVM2FMJGZ4/nachtland-tallinna-linnateater",
+    "nousolek": "https://www.piletilevi.ee/series/TSGQ45KDPN/nousolek-tallinna-linnateater",
+    "novecento": "https://www.piletilevi.ee/series/BLY672UD3Y/novecento-tallinna-linnateater",
+    "oo": "https://www.piletilevi.ee/series/T5AUILXR6L/oo-tallinna-linnateater",
+    "opetatud naised": "https://www.piletilevi.ee/series/I7NF4RLG7I/opetatud-naised-tallinna-linnateater",
+    "orvud": "https://www.piletilevi.ee/series/VMNVIODQWL/orvud-tallinna-linnateater",
+    "poiss kes nagi pimeduses": "https://www.piletilevi.ee/series/I4GGEG4NMY/poiss-kes-nagi-pimeduses-tallinna-linnateater",
+    "puhkus": "https://www.piletilevi.ee/series/YWOR22Y4FR/puhkus-tallinna-linnateater",
+    "seitsmemagajapaev": "https://www.piletilevi.ee/series/OMSSF6ONWA/seitsmemagajapaev-tallinna-linnateater",
+    "sinisilmsed": "https://www.piletilevi.ee/series/M6A5FX7IFF/sinisilmsed-tallinna-linnateater",
+    "sudameharjutus": "https://www.piletilevi.ee/series/AOKECBOEM7/sudameharjutus-tallinna-linnateater",
+    "toeline laas": "https://www.piletilevi.ee/series/IOQMPZIKQQ/toeline-laas-tallinna-linnateater",
+}
+
+
 
 def _cached(key, ttl, builder):
     now = time.time()
@@ -357,40 +387,53 @@ def _event_links_from_series(series_url: str):
     return urls
 
 
+def _series_url_for_title(title: str):
+    return SERIES_BY_TITLE.get(_norm(title))
+
+
 def list_performances(title: str, production_url: str):
+    """
+    v4: use the verified Piletilevi series page as the canonical source.
+
+    The series page contains the complete set of current/future performances.
+    We collect each unique concrete event URL from it and then read each event
+    page individually for an exact date/time/status. This avoids both the
+    missing-link problem and the duplicate-date bug from earlier versions.
+    """
     title_norm = _norm(title)
 
     def build():
-        event_urls, series_urls = _piletilevi_links_from_linnateater(
-            production_url
-        )
+        series_url = _series_url_for_title(title)
 
-        existing_codes = set()
-        for href in event_urls:
-            try:
-                existing_codes.add(_event_code(href))
-            except Exception:
-                pass
+        if not series_url:
+            # Keep a fallback for newly-added productions that are not yet in
+            # the mapping. If Linnateater later begins exposing direct links,
+            # they can still work without another deploy.
+            event_urls, series_urls = _piletilevi_links_from_linnateater(
+                production_url
+            )
+            if series_urls:
+                series_url = series_urls[0]
+            elif event_urls:
+                info = _extract_event_page_info(event_urls[0])
+                series_url = info.get("series_url") or event_urls[0]
+            else:
+                raise RuntimeError(
+                    "Selle lavastuse Piletilevi seeriat ei ole veel "
+                    "jälgijasse lisatud."
+                )
 
-        for series_url in series_urls:
-            for href in _event_links_from_series(series_url):
-                try:
-                    code = _event_code(href)
-                except Exception:
-                    continue
-                if code not in existing_codes:
-                    existing_codes.add(code)
-                    event_urls.append(href)
+        event_urls = _event_links_from_series(series_url)
 
+        # Some Piletilevi pages can serialize event URLs without normal anchors.
+        # _event_links_from_series already checks both forms.
         if not event_urls:
             raise RuntimeError(
-                "Linnateatri lavastuse lehelt ei leitud Piletilevi "
-                "etenduste linke. Selle lavastuse piletid ei pruugi veel "
-                "müügis olla."
+                "Piletilevi seerialeht leiti, kuid konkreetsete etenduste "
+                "linke ei õnnestunud lugeda."
             )
 
         production_image = page_image(production_url)
-
         results = []
         seen_codes = set()
 
@@ -401,13 +444,14 @@ def list_performances(title: str, production_url: str):
                 continue
 
             code = item["event_code"]
-            if code in seen_codes:
+            if code in seen_codes or not item.get("date_text"):
                 continue
 
             event_title_norm = _norm(
                 _strip_piletilevi_suffix(item.get("title") or "")
             )
 
+            # Allow replacement-performance notes, but reject unrelated events.
             if title_norm and event_title_norm:
                 if (
                     title_norm not in event_title_norm
@@ -415,27 +459,17 @@ def list_performances(title: str, production_url: str):
                 ):
                     continue
 
-            if not item.get("date_text"):
-                continue
-
             seen_codes.add(code)
             item["title"] = title
+            item["series_url"] = series_url
             item["production_url"] = production_url
-
             if not item.get("image_url"):
                 item["image_url"] = production_image
-
-            if (
-                item.get("series_url") == item.get("event_url")
-                and series_urls
-            ):
-                item["series_url"] = series_urls[0]
-
             results.append(item)
 
         if not results:
             raise RuntimeError(
-                "Piletilevi lingid leiti, kuid ühegi tulevase etenduse "
+                "Piletilevi seeria on olemas, kuid ühegi etenduse "
                 "kuupäeva ei õnnestunud lugeda."
             )
 
@@ -453,11 +487,10 @@ def list_performances(title: str, production_url: str):
         return results
 
     return _cached(
-        "performances-v3:" + title_norm + ":" + production_url,
+        "performances-v4:" + title_norm + ":" + production_url,
         120,
         build,
     )
-
 
 def tracker_image(title: str, event_url: str = "", production_url: str = ""):
     if production_url:

@@ -1,31 +1,46 @@
-# Linnateater Tracker v3
+# Linnateater Tracker v5
 
-This release fixes the three issues found in v2.
+Built directly on v4. Ticket discovery/worker logic from v4 is retained.
 
-## Fixed
+## Change 1: normal account + password login
 
-1. Missing performances
-   - v2 scraped the generic Piletilevi organiser page.
-   - v3 starts from the selected production's own Linnateater page and follows
-     that production's Piletilevi event/series links.
+New users:
+1. Open "Loo konto".
+2. Phone number is the username.
+3. User chooses a password.
+4. Twilio Verify confirms the phone once.
+5. Future logins use phone + password only.
 
-2. Repeated date/time
-   - v2 could read one date from a shared parent container.
-   - v3 opens each unique concrete Piletilevi event URL and reads that event's
-     own date/time, deduplicated by Piletilevi event code.
+Password reset:
+- "Unustasid parooli?" sends a Twilio verification code.
+- After verification the user chooses a new password.
 
-3. Missing production image
-   - v3 uses OpenGraph, Twitter image, img/src, lazy-load attributes, srcset,
-     CSS/JSON image URLs.
-   - existing v1/v2 trackers with no image are automatically backfilled from
-     their Piletilevi event page and/or matching Linnateater production page.
+Legacy v1-v4 users:
+- Existing `users` and `trackers` are NOT deleted.
+- `password_hash` and `phone_verified_at` are added with safe ALTER TABLE migrations.
+- A legacy user opens "Kasutasin varasemat versiooni", enters the existing
+  phone number, chooses a password and verifies that phone once.
+- Their original user row is updated, so existing trackers stay attached.
+
+Passwords are stored only as Werkzeug password hashes, never plaintext.
+
+## Change 2: redesigned UI
+
+- Editorial theatre-style layout inspired by Tallinna Linnateater's current site.
+- Warm neutral background, black typography and red accent.
+- Visual production gallery instead of a dropdown.
+- Production images lazy-load as cards enter the viewport.
+- Selecting a production opens an image-led performance picker.
+- Active trackers are large image cards.
+- Mobile layout included.
+- The app identifies itself as an unofficial ticket tracker.
 
 ## Deploy
 
-Replace the existing repository files with this ZIP's contents.
+Replace the existing v4 repository files with the contents of this ZIP.
+Do not recreate Railway, PostgreSQL, Twilio, or environment variables.
 
-Do not delete PostgreSQL, create a new Railway project, or create new Twilio
-services. Existing environment variables remain unchanged.
+Existing start commands stay unchanged:
 
 Web:
     /bin/sh -c "exec gunicorn app:app --bind 0.0.0.0:$PORT"

@@ -1,5 +1,6 @@
 import os
 import re
+from datetime import timedelta
 from functools import wraps
 
 from flask import (
@@ -13,13 +14,20 @@ from flask import (
     url_for,
 )
 from twilio.rest import Client
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from db import get_conn, init_db
-from ticket_source import list_performances, list_productions, tracker_image
+from ticket_source import (
+    list_performances,
+    list_productions,
+    page_image,
+    tracker_image,
+)
 
 
 app = Flask(__name__)
 app.secret_key = os.environ["SECRET_KEY"]
+app.permanent_session_lifetime = timedelta(days=30)
 
 TWILIO_ACCOUNT_SID = os.environ["TWILIO_ACCOUNT_SID"]
 TWILIO_AUTH_TOKEN = os.environ["TWILIO_AUTH_TOKEN"]
@@ -38,6 +46,40 @@ def normalize_phone(value: str) -> str:
     if len(re.sub(r"\D", "", value)) < 7:
         raise ValueError("Telefoninumber tundub liiga lühike.")
     return value
+
+
+def validate_password(password: str):
+    if len(password or "") < 8:
+        raise ValueError("Parool peab olema vähemalt 8 tähemärki.")
+    if len(password) > 128:
+        raise ValueError("Parool on liiga pikk.")
+
+
+def get_user_by_phone(phone):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, phone_number, password_hash, phone_verified_at
+                FROM users
+                WHERE phone_number=%s
+                """,
+                (phone,),
+            )
+            return cur.fetchone()
+
+
+def send_verify_code(phone):
+    twilio.verify.v2.services(
+        TWILIO_VERIFY_SERVICE_SID
+    ).verifications.create(to=phone, channel="sms")
+
+
+def check_verify_code(phone, code):
+    result = twilio.verify.v2.services(
+        TWILIO_VERIFY_SERVICE_SID
+    ).verification_checks.create(to=phone, code=code)
+    return result.status == "approved"
 
 
 def login_required(fn):
@@ -71,58 +113,256 @@ def index():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    if session.get("user_id"):
+        return redirect(url_for("dashboard"))
+
     if request.method == "POST":
         try:
             phone = normalize_phone(request.form.get("phone", ""))
-            twilio.verify.v2.services(
-                TWILIO_VERIFY_SERVICE_SID
-            ).verifications.create(to=phone, channel="sms")
-            session["pending_phone"] = phone
-            return redirect(url_for("verify"))
+            password = request.form.get("password") or ""
+            user = get_user_by_phone(phone)
+
+            if not user:
+                flash("Selle telefoninumbriga kontot ei leitud.", "error")
+                return render_template("login.html", phone=phone)
+
+            if not user.get("password_hash"):
+                flash(
+                    "Sellel varasemal kontol pole veel parooli. "
+                    "Määra parool ühe SMS-kinnitusega.",
+                    "notice",
+                )
+                return redirect(url_for("activate", phone=phone))
+
+            if not check_password_hash(user["password_hash"], password):
+                flash("Telefoninumber või parool on vale.", "error")
+                return render_template("login.html", phone=phone)
+
+            session.clear()
+            session["user_id"] = user["id"]
+            session.permanent = bool(request.form.get("remember"))
+            return redirect(url_for("dashboard"))
+
         except Exception as e:
-            flash(f"SMS-koodi saatmine ebaõnnestus: {e}", "error")
+            flash(str(e), "error")
+
     return render_template("login.html")
+
+
+@app.route("/signup", methods=["GET", "POST"])
+def signup():
+    if session.get("user_id"):
+        return redirect(url_for("dashboard"))
+
+    if request.method == "POST":
+        try:
+            phone = normalize_phone(request.form.get("phone", ""))
+            password = request.form.get("password") or ""
+            password2 = request.form.get("password2") or ""
+
+            validate_password(password)
+            if password != password2:
+                raise ValueError("Paroolid ei kattu.")
+
+            existing = get_user_by_phone(phone)
+            if existing and existing.get("password_hash"):
+                flash(
+                    "Selle telefoninumbriga konto on juba olemas. Logi sisse.",
+                    "notice",
+                )
+                return redirect(url_for("login"))
+
+            send_verify_code(phone)
+
+            session["pending_auth"] = {
+                "action": "signup",
+                "phone": phone,
+                # A password hash is safe to keep in the signed session; the
+                # plaintext password never survives the request.
+                "password_hash": generate_password_hash(password),
+            }
+            return redirect(url_for("verify"))
+
+        except Exception as e:
+            flash(f"Kontot ei saanud luua: {e}", "error")
+
+    return render_template("signup.html")
+
+
+@app.route("/activate", methods=["GET", "POST"])
+def activate():
+    """
+    One-time migration path for users created in v1-v4.
+    Their user row and trackers are retained; they only add a password.
+    """
+    if session.get("user_id"):
+        return redirect(url_for("dashboard"))
+
+    default_phone = request.args.get("phone", "")
+
+    if request.method == "POST":
+        try:
+            phone = normalize_phone(request.form.get("phone", ""))
+            password = request.form.get("password") or ""
+            password2 = request.form.get("password2") or ""
+
+            validate_password(password)
+            if password != password2:
+                raise ValueError("Paroolid ei kattu.")
+
+            user = get_user_by_phone(phone)
+            if not user:
+                flash(
+                    "Selle numbriga varasemat kontot ei leitud. Loo uus konto.",
+                    "notice",
+                )
+                return redirect(url_for("signup"))
+
+            if user.get("password_hash"):
+                flash("Sellel kontol on parool juba olemas.", "notice")
+                return redirect(url_for("login"))
+
+            send_verify_code(phone)
+            session["pending_auth"] = {
+                "action": "activate",
+                "phone": phone,
+                "password_hash": generate_password_hash(password),
+            }
+            return redirect(url_for("verify"))
+
+        except Exception as e:
+            flash(f"Parooli määramine ebaõnnestus: {e}", "error")
+
+    return render_template("activate.html", phone=default_phone)
 
 
 @app.route("/verify", methods=["GET", "POST"])
 def verify():
-    phone = session.get("pending_phone")
-    if not phone:
+    pending = session.get("pending_auth")
+    if not pending:
         return redirect(url_for("login"))
+
+    phone = pending["phone"]
+    action = pending["action"]
 
     if request.method == "POST":
         code = (request.form.get("code") or "").strip()
-        try:
-            check = twilio.verify.v2.services(
-                TWILIO_VERIFY_SERVICE_SID
-            ).verification_checks.create(to=phone, code=code)
 
-            if check.status != "approved":
+        try:
+            if not check_verify_code(phone, code):
                 flash("Kood ei olnud õige.", "error")
-                return render_template("verify.html", phone=phone)
+                return render_template(
+                    "verify.html",
+                    phone=phone,
+                    action=action,
+                )
+
+            if action in ("signup", "activate"):
+                password_hash = pending.get("password_hash")
+                with get_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            INSERT INTO users (
+                                phone_number,
+                                password_hash,
+                                phone_verified_at
+                            )
+                            VALUES (%s, %s, NOW())
+                            ON CONFLICT (phone_number)
+                            DO UPDATE SET
+                                password_hash=EXCLUDED.password_hash,
+                                phone_verified_at=NOW()
+                            RETURNING id
+                            """,
+                            (phone, password_hash),
+                        )
+                        uid = cur.fetchone()["id"]
+
+                session.clear()
+                session["user_id"] = uid
+                session.permanent = True
+                flash("Konto on valmis.", "success")
+                return redirect(url_for("dashboard"))
+
+            if action == "reset":
+                session.pop("pending_auth", None)
+                session["reset_authorized_phone"] = phone
+                return redirect(url_for("reset_password"))
+
+            raise RuntimeError("Tundmatu kinnitustoiming.")
+
+        except Exception as e:
+            flash(f"Koodi kontroll ebaõnnestus: {e}", "error")
+
+    return render_template("verify.html", phone=phone, action=action)
+
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    if request.method == "POST":
+        try:
+            phone = normalize_phone(request.form.get("phone", ""))
+            user = get_user_by_phone(phone)
+
+            # Generic message for non-existing users is safer, but for this
+            # small private utility clear feedback is more useful.
+            if not user:
+                flash("Selle telefoninumbriga kontot ei leitud.", "error")
+                return render_template("forgot_password.html", phone=phone)
+
+            send_verify_code(phone)
+            session["pending_auth"] = {
+                "action": "reset",
+                "phone": phone,
+            }
+            return redirect(url_for("verify"))
+
+        except Exception as e:
+            flash(f"Taastamiskoodi ei saanud saata: {e}", "error")
+
+    return render_template("forgot_password.html")
+
+
+@app.route("/reset-password", methods=["GET", "POST"])
+def reset_password():
+    phone = session.get("reset_authorized_phone")
+    if not phone:
+        return redirect(url_for("forgot_password"))
+
+    if request.method == "POST":
+        try:
+            password = request.form.get("password") or ""
+            password2 = request.form.get("password2") or ""
+
+            validate_password(password)
+            if password != password2:
+                raise ValueError("Paroolid ei kattu.")
 
             with get_conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         """
-                        INSERT INTO users (phone_number)
-                        VALUES (%s)
-                        ON CONFLICT (phone_number)
-                        DO UPDATE SET phone_number=EXCLUDED.phone_number
+                        UPDATE users
+                        SET password_hash=%s, phone_verified_at=NOW()
+                        WHERE phone_number=%s
                         RETURNING id
                         """,
-                        (phone,),
+                        (generate_password_hash(password), phone),
                     )
-                    uid = cur.fetchone()["id"]
+                    row = cur.fetchone()
+
+            if not row:
+                raise RuntimeError("Kasutajat ei leitud.")
 
             session.clear()
-            session["user_id"] = uid
-            return redirect(url_for("dashboard"))
+            flash("Parool on muudetud. Logi nüüd sisse.", "success")
+            return redirect(url_for("login"))
 
         except Exception as e:
-            flash(f"Koodi kontroll ebaõnnestus: {e}", "error")
+            flash(f"Parooli ei saanud muuta: {e}", "error")
 
-    return render_template("verify.html", phone=phone)
+    return render_template("reset_password.html", phone=phone)
 
 
 @app.post("/logout")
@@ -149,7 +389,7 @@ def dashboard():
             )
             trackers = cur.fetchall()
 
-    # Backfill images for old v1/v2 trackers.
+    # Backfill images for legacy trackers.
     for tracker in trackers:
         if not tracker.get("image_url"):
             try:
@@ -197,6 +437,22 @@ def dashboard():
         max_trackers=MAX_TRACKERS,
         can_add=len(trackers) < MAX_TRACKERS,
     )
+
+
+@app.get("/api/production-image")
+@login_required
+def api_production_image():
+    production_url = (request.args.get("production_url") or "").strip()
+    if not production_url.startswith("https://linnateater.ee/"):
+        return jsonify({"ok": False, "error": "Vigane lavastuse link."}), 400
+
+    try:
+        return jsonify({
+            "ok": True,
+            "image_url": page_image(production_url),
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
 
 
 @app.get("/api/performances")
@@ -271,7 +527,7 @@ def add_tracker():
         if row:
             flash(f"Jälgimine lisatud: {title} · {date_text}", "success")
         else:
-            flash("Seda etendust sa juba jälgid.", "error")
+            flash("Seda etendust sa juba jälgid.", "notice")
 
     except Exception as e:
         flash(f"Jälgimist ei saanud lisada: {e}", "error")

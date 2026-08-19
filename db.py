@@ -17,10 +17,21 @@ def init_db():
                 CREATE TABLE IF NOT EXISTS users (
                     id BIGSERIAL PRIMARY KEY,
                     phone_number TEXT UNIQUE NOT NULL,
+                    password_hash TEXT,
+                    phone_verified_at TIMESTAMPTZ,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
                 """
             )
+
+            # Safe migration from v1-v4.
+            cur.execute(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT"
+            )
+            cur.execute(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified_at TIMESTAMPTZ"
+            )
+
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS trackers (
@@ -42,8 +53,6 @@ def init_db():
                 )
                 """
             )
-
-            # Safe migration from v1.
             cur.execute(
                 "ALTER TABLE trackers ADD COLUMN IF NOT EXISTS image_url TEXT"
             )
