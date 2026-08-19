@@ -3,194 +3,168 @@
 {% block body %}
 <header class="topbar">
   <a class="logo" href="/dashboard">
-    <img class="logo-icon" src="{{ url_for('static', filename='logo-piletivaht.svg') }}" alt="Piletivaht logo">
-    <span class="logo-stack"><strong>Piletivaht.</strong><small>teatripiletite jälgija</small></span>
+    <img class="logo-icon" src="{{ url_for('static', filename='logo-piletivaht.svg') }}" alt="">
+    <span class="logo-stack"><strong>Piletivaht</strong><small>teatrite piletijälgija</small></span>
   </a>
   <nav class="main-nav">
     <a class="active" href="/dashboard">Repertuaar</a>
     <a href="/my-trackers">Minu jälgimised <span class="nav-count">{{ tracker_count }}</span></a>
-    <a href="#">Teavitused</a>
-    <a href="#">Seaded</a>
   </nav>
   <div class="top-actions">
-    <div class="avatar-badge">{{ (user.phone_number or 'PV')[-2:] }}</div>
+    <span class="account-label">{{ user.phone_number }}</span>
+    <form method="post" action="/logout">
+      <button class="nav-btn">Logi välja</button>
+    </form>
   </div>
 </header>
 
 <main class="main">
-  <section class="hero-stage">
-    <div class="hero-copy-wrap">
-      <div class="hero-kicker">Piletid, mida ei taha maha magada</div>
-      <h1>Teatripiletite jälgija</h1>
-      <p class="hero-sub">Mõned etendused väärivad veidi kannatust.</p>
-      <label class="hero-search" for="production-search">
-        <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke-width="1.8"/><path d="M20 20L16.65 16.65" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <input id="production-search" placeholder="Otsi etendust, lavastajat või teatrit..." autocomplete="off">
-      </label>
+  <section class="hero">
+    <div>
+      <div class="kicker">Teatrite piletijälgija</div>
+      <h1>Piletid. Ühes kohas.<br>Valmis järgmisteks teatriteks.</h1>
+      <div>
+        <span class="hero-chip">{{ tracker_count }} aktiivset jälgimist</span>
+        <span class="hero-chip">{{ theatre_options|length or 1 }} teater täna</span>
+        <span class="hero-chip">Valmis ka Draamateatri ja teiste jaoks</span>
+      </div>
+    </div>
+    <div class="hero-side">
+      <p class="hero-copy">
+        Täna saad jälgida <strong>Tallinna Linnateatri</strong> etendusi. Kujundus ja filtrid on nüüd valmis ka teiste teatrite lisamiseks — vali teater, kuupäev ja lavastus ühest kohast.
+      </p>
+      <div class="hero-panel">
+        <div class="stat-card">
+          <div class="stat-label">Repertuaar</div>
+          <div class="stat-value">{{ productions|length }}</div>
+          <div class="stat-note">Lavastust praegu nähtaval.</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Jälgimismahtu</div>
+          <div class="stat-value">{{ remaining_slots }}</div>
+          <div class="stat-note">Vaba kohta uute etenduste lisamiseks.</div>
+        </div>
+      </div>
     </div>
   </section>
-
-  <div class="filter-ribbon">
-    <div class="filter-box">
-      <label for="theatre-filter">Teater</label>
-      <select class="filter-control" id="theatre-filter">
-        <option value="">Kõik teatrid</option>
-        {% for theatre in theatre_options %}
-          <option value="{{ theatre.slug }}">{{ theatre.name }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="filter-box">
-      <label for="date-filter">Kuupäev</label>
-      <input class="filter-control" id="date-filter" type="date">
-    </div>
-    <div class="filter-box">
-      <label for="status-filter">Žanr / staatus</label>
-      <select class="filter-control" id="status-filter">
-        <option value="">Kõik</option>
-        <option value="available">Ainult saadaval</option>
-        <option value="limited">Piiratud saadavus</option>
-        <option value="soldout">Välja müüdud</option>
-      </select>
-    </div>
-    <div class="filter-action">
-      <button class="filter-reset" id="clear-filters" type="button">Lähtesta filtrid</button>
-    </div>
-  </div>
 
   <div class="flash-stack">
     {% for category,message in get_flashed_messages(with_categories=true) %}
       <div class="flash {{ category }}">{{ message }}</div>
     {% endfor %}
-    {% if productions_error %}<div class="flash error">{{ productions_error }}</div>{% endif %}
   </div>
 
-  <div class="content-grid">
-    <div class="main-col">
-      <section class="panel">
-        <div class="panel-header">
-          <div class="panel-title">
-            <h2>Repertuaar</h2>
-            <span class="panel-badge" id="production-count">{{ productions|length }} etendust</span>
-          </div>
-          <div class="panel-tools">
-            <span>Sorteeri:</span>
-            <span class="tool-pill">Kuupäeva järgi</span>
-          </div>
-        </div>
-
-        {% if can_add and productions %}
-          <div class="production-grid" id="production-grid">
-            {% for p in productions %}
-              {% set status_text = 'Saadaval' %}
-              {% set status_class = 'available' %}
-              {% set dot_class = 'green' %}
-              {% set next_date = p.next_date_label or '' %}
-              {% if p.cached_performances is defined and p.cached_performances %}
-              {% endif %}
-              <button
-                type="button"
-                class="production-card"
-                data-title="{{ p.title|e }}"
-                data-url="{{ p.production_url|e }}"
-                data-theatre="{{ p.theatre_slug|e }}"
-                data-theatre-name="{{ p.theatre_name|e }}"
-                data-dates="{{ p.available_dates_csv|e }}"
-                data-status="{{ p.card_status|default('') }}"
-                aria-label="Vali {{ p.title|e }}"
-              >
-                <div class="production-thumb-wrap">
-                  <span class="production-chip">{{ p.theatre_name.replace('Tallinna ','').replace('Eesti ','') }}</span>
-                  {% if p.display_image_url %}
-                    <img class="production-thumb" src="{{ p.display_image_url }}" alt="{{ p.title }}" loading="lazy" decoding="async">
-                  {% endif %}
-                </div>
-                <div class="production-body">
-                  <div class="production-title-row">
-                    <h3 class="production-title">{{ p.title }}</h3>
-                    <span class="fav-icon">♡</span>
-                  </div>
-                  <div class="production-meta">
-                    {% if next_date %}<div>🗓 {{ next_date }}</div>{% endif %}
-                    <div>📍 {{ p.theatre_name }}</div>
-                  </div>
-                  <div class="status-row status-{{ p.card_status|default('available') }}">
-                    {% if p.card_status == 'soldout' %}
-                      <span class="dot red"></span> Välja müüdud
-                    {% elif p.card_status == 'limited' %}
-                      <span class="dot orange"></span> Piiratud saadavus
-                    {% else %}
-                      <span class="dot green"></span> Saadaval
-                    {% endif %}
-                  </div>
-                </div>
-              </button>
-            {% endfor %}
-          </div>
-          <div class="catalog-empty" id="catalog-empty" hidden>Ükski lavastus ei vasta filtritele.</div>
-        {% else %}
-          <div class="empty-state">Sul on {{ max_trackers }} aktiivset jälgimist. Eemalda üks, et uus lisada.</div>
-        {% endif %}
-      </section>
+  <section class="section" id="repertuaar">
+    <div class="section-title-row">
+      <div>
+        <div class="kicker">01 · Repertuaar</div>
+        <h2 class="section-title">Vali teater, kuupäev ja lavastus.</h2>
+      </div>
+      <div class="section-note">
+        Praegu on aktiivne allikas Tallinna Linnateater. Sama vaade on nüüd valmis ka järgmiste teatrite lisamiseks.
+      </div>
     </div>
 
-    <aside class="sidebar-col">
-      <section class="sidebar-card">
-        <div class="sidebar-head">
-          <h3>Minu jälgimised</h3>
-          <span>→</span>
-        </div>
-        <div class="tracker-mini-list">
-          {% for t in trackers[:4] %}
-            <div class="tracker-mini">
-              {% if t.image_url %}
-                <img src="{{ t.image_url }}" alt="{{ t.title }}">
-              {% else %}
-                <img alt="" src="{{ url_for('static', filename='logo-piletivaht.svg') }}">
-              {% endif %}
-              <div>
-                <div class="tracker-mini-title">{{ t.title }}</div>
-                <div class="tracker-mini-meta">{{ t.date_text }}</div>
-                <div class="tracker-mini-meta">{{ t.theatre_name or 'Linnateater' }}</div>
-                <div class="tracker-mini-status {{ 'status-soldout' if (t.last_status or '')|lower.startswith('välja') else ('status-available' if (t.last_status or '')|lower.startswith('saada') else 'status-limited') }}">
-                  {% if (t.last_status or '')|lower.startswith('välja') %}<span class="dot red"></span>{% elif (t.last_status or '')|lower.startswith('saada') %}<span class="dot green"></span>{% else %}<span class="dot orange"></span>{% endif %}
-                  {{ t.last_status or 'Aktiivne' }}
-                </div>
-              </div>
-              <div style="color:#808495">⋮</div>
-            </div>
-          {% else %}
-            <div class="catalog-empty">Praegu pole ühtegi aktiivset jälgimist.</div>
-          {% endfor %}
-        </div>
-        <a class="sidebar-cta" href="/my-trackers">Vaata kõiki jälgimisi →</a>
-        <div class="support-block">
-          <h4>Toetatud teatrid</h4>
-          <div class="theatre-logos">
-            <div class="theatre-logo">Tallinna Linnateater</div>
-            <div class="theatre-logo">Eesti Draamateater</div>
-            <div class="theatre-logo">Vanemuine</div>
-            <div class="theatre-logo">Peagi veel…</div>
+    {% if productions_error %}
+      <div class="flash error">{{ productions_error }}</div>
+    {% endif %}
+
+    {% if can_add and productions %}
+      <div class="catalog-toolbar">
+        <div class="filter-bar">
+          <div class="filter-group filter-grow">
+            <label class="filter-label" for="production-search">Otsi lavastust</label>
+            <input class="filter-control" id="production-search" placeholder="Nt Krum või Esietendus" autocomplete="off">
           </div>
+          <div class="filter-group">
+            <label class="filter-label" for="theatre-filter">Teater</label>
+            <select class="filter-control" id="theatre-filter">
+              <option value="">Kõik teatrid</option>
+              {% for theatre in theatre_options %}
+                <option value="{{ theatre.slug }}">{{ theatre.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="date-filter">Kuupäev</label>
+            <input class="filter-control" id="date-filter" type="date">
+          </div>
+          <button class="filter-reset" id="clear-filters" type="button">Lähtesta</button>
         </div>
-      </section>
-    </aside>
-  </div>
+        <div class="filter-help">Kuupäeva filter kasutab salvestatud Piletilevi etenduste nimekirja. Kui valid kuupäeva, jäävad nähtavale ainult lavastused, millel on sellel päeval mõni etendus.</div>
+      </div>
+
+      <div class="grid-meta">
+        <div class="grid-count" id="production-count">{{ productions|length }} lavastust</div>
+        <div>
+          <span class="stat-chip">Vali kaardilt lavastus</span>
+          <span class="stat-chip">Modalis saad valida mitu kuupäeva korraga</span>
+        </div>
+      </div>
+
+      <div class="production-grid" id="production-grid">
+        {% for p in productions %}
+          <button
+            type="button"
+            class="production-card"
+            data-title="{{ p.title|e }}"
+            data-url="{{ p.production_url|e }}"
+            data-theatre="{{ p.theatre_slug|e }}"
+            data-theatre-name="{{ p.theatre_name|e }}"
+            data-dates="{{ p.available_dates_csv|e }}"
+            aria-label="Vali {{ p.title|e }}"
+          >
+            <span class="production-graphic">{{ "%02d"|format(loop.index) }}</span>
+            {% if p.display_image_url %}
+              <img
+                class="production-thumb"
+                src="{{ p.display_image_url }}"
+                alt="{{ p.title }}"
+                loading="lazy"
+                decoding="async"
+                onload="this.previousElementSibling.style.display='none'"
+                onerror="this.style.display='none'"
+              >
+            {% endif %}
+            <span class="production-content">
+              <span class="production-index">{{ p.theatre_name }}</span>
+              <span class="production-title">{{ p.title }}</span>
+              {% if p.next_date_label %}
+                <span class="production-meta">Järgmine kuupäev: {{ p.next_date_label }}</span>
+              {% endif %}
+            </span>
+          </button>
+        {% endfor %}
+      </div>
+      <div class="catalog-empty" id="catalog-empty" hidden>Ükski lavastus ei vasta praegustele filtritele.</div>
+
+    {% elif not can_add %}
+      <div class="empty-state">
+        Sul on {{ max_trackers }} aktiivset jälgimist. Eemalda üks, et uus lisada.
+      </div>
+    {% endif %}
+  </section>
 </main>
 
 <div class="modal-backdrop" id="performance-modal" aria-hidden="true">
   <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-production-name">
     <button class="modal-close" id="modal-close" type="button" aria-label="Sulge">×</button>
+
     <div class="modal-visual">
       <div class="production-graphic" id="modal-fallback">PV</div>
       <img id="modal-image" alt="" style="display:none">
       <div class="modal-name" id="modal-production-name"></div>
     </div>
+
     <div class="modal-body">
       <div class="modal-kicker" id="modal-kicker">Vali etendus</div>
       <h3 class="modal-title">Kuupäev ja kellaaeg</h3>
-      <p class="modal-sub">Valime Piletilevi seeriast täpse etenduse. Jälgimine algab kohe pärast kinnitamist.</p>
+      <p class="modal-sub">
+        Valime Piletilevi seeriast täpse etenduse. Jälgimine algab kohe pärast kinnitamist.
+      </p>
+
       <div id="performance-area" class="picker-msg">Laen etendusi…</div>
+
       <form method="post" action="/trackers" id="tracker-form">
         <input type="hidden" name="title" id="title">
         <input type="hidden" name="image_url" id="image_url">
@@ -198,9 +172,14 @@
         <input type="hidden" name="theatre_name" id="theatre_name">
         <input type="hidden" name="theatre_slug" id="theatre_slug">
         <input type="hidden" name="selected_event_codes" id="selected_event_codes">
+
         <div class="modal-footer">
-          <button class="watch-btn" id="submit-btn" disabled>Vali kuupäev</button>
-          <span class="picker-msg" id="selection-msg">Saad valida kuni {{ remaining_slots }} etendust.</span>
+          <button class="watch-btn" id="submit-btn" disabled>
+            Vali kuupäev
+          </button>
+          <span class="picker-msg" id="selection-msg">
+            Saad valida kuni {{ remaining_slots }} etendust.
+          </span>
         </div>
       </form>
     </div>
@@ -211,117 +190,256 @@
 (() => {
   const grid = document.getElementById("production-grid");
   if (!grid) return;
-  const cards = [...grid.querySelectorAll('.production-card')];
-  const search = document.getElementById('production-search');
-  const theatreFilter = document.getElementById('theatre-filter');
-  const dateFilter = document.getElementById('date-filter');
-  const statusFilter = document.getElementById('status-filter');
-  const clearFilters = document.getElementById('clear-filters');
-  const count = document.getElementById('production-count');
-  const emptyState = document.getElementById('catalog-empty');
+
+  const cards = [...grid.querySelectorAll(".production-card")];
+  const search = document.getElementById("production-search");
+  const theatreFilter = document.getElementById("theatre-filter");
+  const dateFilter = document.getElementById("date-filter");
+  const clearFilters = document.getElementById("clear-filters");
+  const count = document.getElementById("production-count");
+  const emptyState = document.getElementById("catalog-empty");
   const remainingSlots = {{ remaining_slots|int }};
-  const modal = document.getElementById('performance-modal');
-  const modalClose = document.getElementById('modal-close');
-  const modalName = document.getElementById('modal-production-name');
-  const modalKicker = document.getElementById('modal-kicker');
-  const modalImage = document.getElementById('modal-image');
-  const modalFallback = document.getElementById('modal-fallback');
-  const performanceArea = document.getElementById('performance-area');
-  const submit = document.getElementById('submit-btn');
-  const selectionMsg = document.getElementById('selection-msg');
-  const titleField = document.getElementById('title');
-  const imageField = document.getElementById('image_url');
-  const productionUrlField = document.getElementById('production_url');
-  const theatreNameField = document.getElementById('theatre_name');
-  const theatreSlugField = document.getElementById('theatre_slug');
-  const selectedCodesField = document.getElementById('selected_event_codes');
+
+  const modal = document.getElementById("performance-modal");
+  const modalClose = document.getElementById("modal-close");
+  const modalName = document.getElementById("modal-production-name");
+  const modalKicker = document.getElementById("modal-kicker");
+  const modalImage = document.getElementById("modal-image");
+  const modalFallback = document.getElementById("modal-fallback");
+  const performanceArea = document.getElementById("performance-area");
+  const submit = document.getElementById("submit-btn");
+  const selectionMsg = document.getElementById("selection-msg");
+  const titleField = document.getElementById("title");
+  const imageField = document.getElementById("image_url");
+  const productionUrlField = document.getElementById("production_url");
+  const theatreNameField = document.getElementById("theatre_name");
+  const theatreSlugField = document.getElementById("theatre_slug");
+  const selectedCodesField = document.getElementById("selected_event_codes");
+
   let selected = new Map();
+
   function dateTextToIso(dateText) {
-    const match = (dateText || '').match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
-    if (!match) return '';
+    const match = (dateText || "").match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+    if (!match) return "";
     const [, d, m, y] = match;
-    return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
   }
+
   async function getProductionImage(url, cardImage, title) {
     if (cardImage) return cardImage;
     try {
-      const params = new URLSearchParams({production_url:url,title:title||''});
-      const response = await fetch('/api/production-image?' + params.toString());
+      const params = new URLSearchParams({
+        production_url: url,
+        title: title || ""
+      });
+      const response = await fetch(
+        "/api/production-image?" + params.toString()
+      );
       const data = await response.json();
-      return data.ok ? (data.image_url || '') : '';
-    } catch { return ''; }
+      return data.ok ? (data.image_url || "") : "";
+    } catch {
+      return "";
+    }
   }
+
   function updateSelectionUI() {
-    const selectedCount = selected.size;
+    const count = selected.size;
     selectedCodesField.value = JSON.stringify([...selected.keys()]);
-    if (!selectedCount) {
+
+    if (!count) {
       submit.disabled = true;
-      submit.textContent = 'Vali kuupäev';
-      selectionMsg.textContent = `Saad valida kuni ${remainingSlots} etendust.`;
+      submit.textContent = "Vali kuupäev";
+      selectionMsg.textContent =
+        `Saad valida kuni ${remainingSlots} etendust.`;
       return;
     }
+
     submit.disabled = false;
-    submit.textContent = selectedCount === 1 ? 'Jälgi 1 etendust' : `Jälgi ${selectedCount} etendust`;
-    selectionMsg.textContent = selectedCount === 1 ? '1 kuupäev valitud' : `${selectedCount} kuupäeva valitud`;
+    submit.textContent = count === 1
+      ? "Jälgi 1 etendust"
+      : `Jälgi ${count} etendust`;
+    selectionMsg.textContent = count === 1
+      ? "1 kuupäev valitud"
+      : `${count} kuupäeva valitud`;
   }
-  function resetSelection() { selected = new Map(); selectedCodesField.value='[]'; updateSelectionUI(); }
-  function openModal(){ modal.classList.add('open'); modal.setAttribute('aria-hidden','false'); document.body.style.overflow='hidden'; }
-  function closeModal(){ modal.classList.remove('open'); modal.setAttribute('aria-hidden','true'); document.body.style.overflow=''; cards.forEach(c=>c.classList.remove('active')); resetSelection(); }
-  function applyFilters(){
-    const q = (search.value || '').trim().toLocaleLowerCase('et');
-    const theatre = theatreFilter.value || '';
-    const date = dateFilter.value || '';
-    const status = statusFilter.value || '';
+
+  function resetSelection() {
+    selected = new Map();
+    selectedCodesField.value = "[]";
+    updateSelectionUI();
+  }
+
+  function openModal() {
+    modal.classList.add("open");
+    modal.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+  }
+
+  function closeModal() {
+    modal.classList.remove("open");
+    modal.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+    cards.forEach(card => card.classList.remove("active"));
+    resetSelection();
+  }
+
+  function applyFilters() {
+    const q = (search.value || "").trim().toLocaleLowerCase("et");
+    const theatre = theatreFilter.value || "";
+    const date = dateFilter.value || "";
     let visible = 0;
+
     cards.forEach(card => {
-      const title = card.dataset.title.toLocaleLowerCase('et');
-      const theatreSlug = card.dataset.theatre || '';
-      const dates = (card.dataset.dates || '').split(',').filter(Boolean);
-      const cardStatus = card.dataset.status || '';
-      const matches = (!q || title.includes(q)) && (!theatre || theatreSlug===theatre) && (!date || dates.includes(date)) && (!status || cardStatus===status);
-      card.hidden = !matches;
-      if (matches) visible += 1;
+      const title = card.dataset.title.toLocaleLowerCase("et");
+      const theatreSlug = card.dataset.theatre || "";
+      const dates = (card.dataset.dates || "").split(",").filter(Boolean);
+
+      const matchesSearch = !q || title.includes(q);
+      const matchesTheatre = !theatre || theatreSlug === theatre;
+      const matchesDate = !date || dates.includes(date);
+
+      card.hidden = !(matchesSearch && matchesTheatre && matchesDate);
+      if (!card.hidden) visible += 1;
     });
-    count.textContent = `${visible} etendust`;
+
+    count.textContent = `${visible} lavastust`;
     emptyState.hidden = visible !== 0;
   }
-  modalClose.addEventListener('click', closeModal);
-  modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
-  document.addEventListener('keydown', e => { if (e.key==='Escape' && modal.classList.contains('open')) closeModal(); });
+
+  modalClose.addEventListener("click", closeModal);
+  modal.addEventListener("click", event => {
+    if (event.target === modal) closeModal();
+  });
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && modal.classList.contains("open")) {
+      closeModal();
+    }
+  });
+
   function togglePerformance(button, item) {
     const code = item.event_code;
-    if (selected.has(code)) { selected.delete(code); button.classList.remove('selected'); button.setAttribute('aria-pressed','false'); updateSelectionUI(); return; }
-    if (selected.size >= remainingSlots) { selectionMsg.textContent = `Sul on ruumi veel ${remainingSlots} jälgimisele.`; return; }
-    selected.set(code, item); button.classList.add('selected'); button.setAttribute('aria-pressed','true'); updateSelectionUI();
+
+    if (selected.has(code)) {
+      selected.delete(code);
+      button.classList.remove("selected");
+      button.setAttribute("aria-pressed", "false");
+      updateSelectionUI();
+      return;
+    }
+
+    if (selected.size >= remainingSlots) {
+      selectionMsg.textContent =
+        `Sul on ruumi veel ${remainingSlots} jälgimisele.`;
+      return;
+    }
+
+    selected.set(code, item);
+    button.classList.add("selected");
+    button.setAttribute("aria-pressed", "true");
+    updateSelectionUI();
   }
+
   async function selectProduction(card) {
-    cards.forEach(c=>c.classList.remove('active')); card.classList.add('active'); resetSelection();
-    const title = card.dataset.title; const productionUrl = card.dataset.url; const theatreName = card.dataset.theatreName || 'Tallinna Linnateater'; const theatreSlug = card.dataset.theatre || 'linnateater';
-    const selectedDate = dateFilter.value || ''; const img = card.querySelector('.production-thumb');
-    const cardImage = img && img.complete && img.naturalWidth ? (img.currentSrc || img.src) : (img?.src || '');
-    titleField.value = title; productionUrlField.value = productionUrl; theatreNameField.value = theatreName; theatreSlugField.value = theatreSlug; imageField.value = cardImage || '';
-    modalName.textContent = title; modalKicker.textContent = theatreName; modalImage.style.display='none'; modalFallback.style.display='grid'; performanceArea.className='picker-msg'; performanceArea.textContent='Laen Piletilevist etendusi…'; openModal();
-    getProductionImage(productionUrl, cardImage, title).then(image => { imageField.value = image || ''; if (!image) return; modalImage.src = image; modalImage.alt = title; modalImage.onload = () => { modalFallback.style.display='none'; modalImage.style.display='block'; }; });
+    cards.forEach(c => c.classList.remove("active"));
+    card.classList.add("active");
+    resetSelection();
+
+    const title = card.dataset.title;
+    const productionUrl = card.dataset.url;
+    const theatreName = card.dataset.theatreName || "Tallinna Linnateater";
+    const theatreSlug = card.dataset.theatre || "linnateater";
+    const selectedDate = dateFilter.value || "";
+    const img = card.querySelector(".production-thumb");
+    const cardImage = img && img.complete && img.naturalWidth
+      ? (img.currentSrc || img.src)
+      : (img?.src || "");
+
+    titleField.value = title;
+    productionUrlField.value = productionUrl;
+    theatreNameField.value = theatreName;
+    theatreSlugField.value = theatreSlug;
+    imageField.value = cardImage || "";
+
+    modalName.textContent = title;
+    modalKicker.textContent = theatreName;
+    modalImage.style.display = "none";
+    modalFallback.style.display = "grid";
+    performanceArea.className = "picker-msg";
+    performanceArea.textContent = "Laen Piletilevist etendusi…";
+    openModal();
+
+    getProductionImage(productionUrl, cardImage, title).then(image => {
+      imageField.value = image || "";
+      if (!image) return;
+      modalImage.src = image;
+      modalImage.alt = title;
+      modalImage.onload = () => {
+        modalFallback.style.display = "none";
+        modalImage.style.display = "block";
+      };
+    });
+
     try {
-      const params = new URLSearchParams({title:title, production_url:productionUrl});
-      const response = await fetch('/api/performances?' + params.toString());
+      const params = new URLSearchParams({
+        title: title,
+        production_url: productionUrl
+      });
+      const response = await fetch(
+        "/api/performances?" + params.toString()
+      );
       const data = await response.json();
-      if (!response.ok || !data.ok) throw new Error(data.error || 'Etenduste laadimine ebaõnnestus.');
-      const filtered = selectedDate ? data.performances.filter(item => dateTextToIso(item.date_text) === selectedDate) : data.performances;
+
+      if (!response.ok || !data.ok) {
+        throw new Error(
+          data.error || "Etenduste laadimine ebaõnnestus."
+        );
+      }
+
+      const filtered = selectedDate
+        ? data.performances.filter(item => dateTextToIso(item.date_text) === selectedDate)
+        : data.performances;
       const performances = filtered.length ? filtered : data.performances;
-      performanceArea.className = 'performance-list'; performanceArea.innerHTML = '';
+
+      performanceArea.className = "performance-list";
+      performanceArea.innerHTML = "";
+
       performances.forEach(item => {
-        const button = document.createElement('button'); button.type='button'; button.className='performance-option'; button.setAttribute('aria-pressed','false');
-        button.innerHTML = `<span class="perf-date">${item.date_text}</span><span class="perf-status">${item.status}</span>`;
-        button.addEventListener('click', () => togglePerformance(button, item));
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "performance-option";
+        button.setAttribute("aria-pressed", "false");
+        button.innerHTML = `
+          <span class="perf-date">${item.date_text}</span>
+          <span class="perf-status">${item.status}</span>
+        `;
+        button.addEventListener(
+          "click",
+          () => togglePerformance(button, item)
+        );
         performanceArea.appendChild(button);
       });
-    } catch (error) { performanceArea.className='picker-msg'; performanceArea.textContent=error.message; }
+    } catch (error) {
+      performanceArea.className = "picker-msg";
+      performanceArea.textContent = error.message;
+    }
   }
-  cards.forEach(card => card.addEventListener('click', () => selectProduction(card)));
-  [search,theatreFilter,dateFilter,statusFilter].forEach(el => el && el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', applyFilters));
-  clearFilters.addEventListener('click', () => { search.value=''; theatreFilter.value=''; dateFilter.value=''; statusFilter.value=''; applyFilters(); });
+
+  cards.forEach(card => {
+    card.addEventListener("click", () => selectProduction(card));
+  });
+
+  search.addEventListener("input", applyFilters);
+  theatreFilter.addEventListener("change", applyFilters);
+  dateFilter.addEventListener("change", applyFilters);
+  clearFilters.addEventListener("click", () => {
+    search.value = "";
+    theatreFilter.value = "";
+    dateFilter.value = "";
+    applyFilters();
+  });
+
   applyFilters();
 })();
 </script>
+
 {% endblock %}
