@@ -1,71 +1,66 @@
-# Linnateater Tracker v18
+# Linnateater Tracker v19
 
-This release intentionally resets the architecture to the v10 version that
-performed well, then adds only the later features/fixes that are still needed.
+Built directly on v18.
 
-## 1. v10 image architecture restored
+## Goal
 
-The repertoire uses the lightweight v10 production-card/image-cache behavior.
-The large-image changes introduced after v10 are not used.
+Keep the fast v10/v18 repertoire behavior, but automatically replace ONLY
+production thumbnails that are physically too small.
 
-The login headline/spacing from v16 is preserved.
+## How image quality is detected
 
-## 2. Missing Piletilevi series mappings added
+The Railway worker downloads the image in its own background thread and reads
+its actual pixel dimensions with Pillow.
 
-Added:
-- Vaikus
-- Uskuja
-- Viimane liivlane
-- Esietendus
-- Suur veeuputus
-- Ülestähendusi põranda alt
-- Polkovniku lesk
-- Muusikale
-- Kolemees
+The default lightweight Linnateater listing thumbnail is kept when its shorter
+side is at least 650 px.
 
-Existing mappings remain intact.
+If the thumbnail is smaller:
+1. fetch a larger image candidate from the individual Linnateater production
+   page;
+2. use it only if it is large enough or has at least 1.5x the pixel area;
+3. cache the chosen URL in PostgreSQL.
 
-## 3. Performance dates are cached in PostgreSQL
+This means normal sharp thumbnails stay lightweight, while cards such as a
+small/blurred source can automatically receive a better image.
 
-New table:
+## No web-page lag from quality checking
 
-    performance_cache
+Dimension probing and fallback discovery run in a dedicated daemon thread in
+the Railway worker.
 
-The Railway worker refreshes performance lists in a separate background thread
-every 5 minutes. Each production uses the fast one-request Piletilevi series
-parser.
+They are NOT executed:
+- in the repertoire HTTP request;
+- when opening a production;
+- in the 15–30 second active ticket-monitor cycle.
 
-The `/api/performances` modal endpoint:
-1. reads PostgreSQL first (normally instant);
-2. only contacts Piletilevi when the production has no cached data yet;
-3. saves that fallback result for later clicks.
+The first v19 worker run checks every production once so existing cached small
+images can be repaired. Later checks happen every 6 hours and normal cache
+behavior resumes.
 
-The background cache thread is completely separate from the 15–30 second ticket
-monitor cycle, so refreshing repertoire data cannot delay active tracker checks.
+## New dependency
 
-## 4. Later features retained
+Pillow is included only so the background worker can read image dimensions.
 
+## Existing v18 features retained
+
+- PostgreSQL performance cache;
+- fast modal dates;
+- added Piletilevi series mappings;
 - multiple dates selectable at once;
-- Repertuaar / Minu jälgimised navigation;
-- phone + password login;
+- Repertuaar / Minu jälgimised;
+- password login;
 - Twilio SMS alerts;
-- existing trackers/database remain intact.
+- approved login-page headline spacing.
 
 ## Deploy
 
-Replace v17 files with this ZIP.
+Replace v18 files with this ZIP. No Railway, PostgreSQL or Twilio settings need
+to change.
 
-Do NOT change:
-- Railway services;
-- PostgreSQL;
-- Twilio variables;
-- web start command;
-- worker start command.
+After deployment, worker logs may show entries such as:
 
-After deployment, the worker log should show:
+    🖼 Upgraded small thumbnail: Alguses oli laul → (1200, 1600)
 
-    🎟 Refreshing performance cache in background...
-    🎟 Performance cache ready: ...
-
-Once that first cache pass completes, opening production modals should normally
-be served directly from PostgreSQL rather than waiting on Piletilevi.
+Only productions whose lightweight image is actually too small should be
+upgraded.

@@ -4,3 +4,4 @@ psycopg[binary]==3.2.9
 requests==2.32.4
 beautifulsoup4==4.13.4
 twilio==9.7.0
+Pillow==11.3.0

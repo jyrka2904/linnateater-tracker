@@ -379,6 +379,33 @@ def production_image(title: str, production_url: str) -> str:
 
     return ""
 
+def production_image_fallback(title: str, production_url: str) -> str:
+    """
+    Resolve a larger image without reusing the repertoire-list thumbnail.
+
+    Used only when the lightweight thumbnail is physically too small.
+    """
+    wanted = _norm(title)
+
+    try:
+        image = page_image(production_url)
+        if image:
+            return image
+    except Exception:
+        pass
+
+    series_url = SERIES_BY_TITLE.get(wanted)
+    if series_url:
+        try:
+            image = page_image(series_url)
+            if image:
+                return image
+        except Exception:
+            pass
+
+    return ""
+
+
 def production_for_title(title: str):
     wanted = _norm(_strip_piletilevi_suffix(title))
     productions = list_productions()

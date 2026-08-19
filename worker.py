@@ -102,31 +102,34 @@ def send_and_remove(t):
     print(f"🗑 Tracker #{t['id']} removed after alert.", flush=True)
 
 
-def maybe_refresh_image_cache(force=False):
-    global _last_image_refresh
-    now = time.monotonic()
-    if (
-        not force
-        and _last_image_refresh
-        and now - _last_image_refresh < IMAGE_CACHE_REFRESH_SECONDS
-    ):
-        return
+def image_cache_loop():
+    """
+    Refresh image quality completely outside the ticket-checking loop.
+    """
+    first_run = True
 
-    print("🖼 Refreshing Linnateater production image cache...", flush=True)
-    try:
-        total, resolved = refresh_production_images(max_workers=6)
-        _last_image_refresh = time.monotonic()
-        print(
-            f"🖼 Image cache ready: {resolved} refreshed / "
-            f"{total} productions checked.",
-            flush=True,
-        )
-    except Exception as error:
-        print(
-            f"⚠️ Image cache refresh failed: "
-            f"{type(error).__name__}: {error}",
-            flush=True,
-        )
+    while True:
+        print("🖼 Checking repertoire image quality in background...", flush=True)
+
+        try:
+            total, resolved, upgraded = refresh_production_images(
+                max_workers=4,
+                force_all=first_run,
+            )
+            print(
+                f"🖼 Image cache ready: {resolved} refreshed / "
+                f"{total} productions; {upgraded} low-res images upgraded.",
+                flush=True,
+            )
+        except Exception as error:
+            print(
+                f"⚠️ Image cache refresh failed: "
+                f"{type(error).__name__}: {error}",
+                flush=True,
+            )
+
+        first_run = False
+        time.sleep(6 * 60 * 60)
 
 
 def run_cycle():
@@ -200,6 +203,12 @@ def main():
         name="performance-cache",
         daemon=True,
     ).start()
+
+    threading.Thread(
+        target=image_cache_loop,
+        name="image-cache",
+        daemon=True,
+    ).start()
     print(
         f"Pause between completed cycles: {MIN_WAIT}–{MAX_WAIT} seconds",
         flush=True,
@@ -207,7 +216,6 @@ def main():
 
     while True:
         try:
-            maybe_refresh_image_cache()
             run_cycle()
         except Exception as e:
             print(
