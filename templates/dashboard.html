@@ -59,7 +59,7 @@
           </div>
           <div class="filter-group">
             <label class="filter-label" for="date-filter">Kuupäev</label>
-            <input class="filter-control" id="date-filter" type="date">
+            <input class="filter-control eu-date-input" id="date-filter" type="text" placeholder="pp.kk.aaaa" lang="et-EE" data-iso="">
           </div>
           <button class="filter-reset" id="clear-filters" type="button">Lähtesta</button>
         </div>
@@ -258,7 +258,7 @@
   function applyFilters() {
     const q = (search.value || "").trim().toLocaleLowerCase("et");
     const theatre = theatreFilter.value || "";
-    const date = dateFilter.value || "";
+    const date = dateFilter.dataset.iso || "";
     let visible = 0;
 
     cards.forEach(card => {
@@ -406,7 +406,7 @@
   clearFilters.addEventListener("click", () => {
     search.value = "";
     theatreFilter.value = "";
-    dateFilter.value = "";
+    dateFilter.value = ""; dateFilter.dataset.iso = "";
     applyFilters();
   });
 

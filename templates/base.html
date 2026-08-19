@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="et">
+<html lang="et-EE">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -674,6 +674,94 @@
       .page-intro h1{font-size:34px}
     }
 
+  
+
+    /* v30: restore original warm backgrounds + typography hierarchy */
+    html{
+      background:#efede8;
+    }
+    body{
+      background:#efede8;
+      color:#0a0a0a;
+    }
+    html,body,button,input,select,textarea{
+      font-family:"Segoe UI",Arial,Helvetica,sans-serif;
+    }
+    body{
+      font-weight:400;
+      letter-spacing:-.01em;
+    }
+    .topbar{
+      background:rgba(16,17,19,.93);
+    }
+    .main-nav a{
+      font-size:14px;
+      font-weight:700;
+      letter-spacing:.01em;
+      padding:11px 15px;
+    }
+    .account-label{
+      font-size:15px;
+      font-weight:600;
+      color:rgba(255,255,255,.82);
+    }
+    .nav-btn{
+      font-size:13px;
+      font-weight:700;
+    }
+    .logo-stack strong{
+      font-family:inherit;
+    }
+    .section-title,
+    .production-title,
+    .tracker-title,
+    .modal-title,
+    .auth-box h2,
+    .auth-art h1{
+      font-family:inherit;
+    }
+
+    /* Login returns to the original solid red + warm off-white split. */
+    .auth-page{
+      background:#efede8;
+    }
+    .auth-art{
+      background:#f1373d;
+    }
+    .auth-panel{
+      background:#efede8;
+    }
+    .auth-box{
+      background:transparent;
+      border:0;
+      box-shadow:none;
+      border-radius:0;
+    }
+
+    /* European date picker: Monday first, Sunday last. */
+    .eu-date-wrap{position:relative;width:100%}
+    .eu-date-input{cursor:pointer;background:rgba(255,255,255,.92)}
+    .eu-calendar{
+      position:absolute;z-index:120;top:calc(100% + 8px);right:0;
+      width:300px;padding:14px;border-radius:16px;background:#fff;
+      border:1px solid rgba(16,17,19,.12);
+      box-shadow:0 18px 48px rgba(17,17,18,.16);
+      display:none;color:#161619;
+    }
+    .eu-calendar.open{display:block}
+    .eu-cal-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+    .eu-cal-title{font-size:14px;font-weight:700;text-transform:capitalize}
+    .eu-cal-nav{width:34px;height:34px;border:1px solid rgba(16,17,19,.10);border-radius:10px;background:#f5f2ed;color:#111;font-size:18px}
+    .eu-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+    .eu-cal-weekday{padding:5px 0;text-align:center;font-size:10px;font-weight:800;color:#77716a;text-transform:uppercase}
+    .eu-cal-day{height:34px;border:0;border-radius:9px;background:transparent;color:#151515;font-size:12px}
+    .eu-cal-day:hover{background:#efede8}
+    .eu-cal-day.other{color:#bbb5ae}
+    .eu-cal-day.selected{background:#111;color:#fff;font-weight:800}
+    .eu-cal-day.today{box-shadow:inset 0 0 0 1px #d93646}
+    .eu-cal-footer{display:flex;justify-content:space-between;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid #eee9e2}
+    .eu-cal-link{border:0;background:transparent;color:#5d5750;font-size:11px;font-weight:700;padding:4px}
+
   </style>
   {% block head %}{% endblock %}
 </head>
@@ -683,5 +771,115 @@
   {% block body %}{% endblock %}
 </div>
 {% endblock %}
+
+<script>
+(() => {
+  const MONTHS = [
+    "jaanuar","veebruar","märts","aprill","mai","juuni",
+    "juuli","august","september","oktoober","november","detsember"
+  ];
+  const WEEKDAYS = ["E","T","K","N","R","L","P"];
+
+  function pad(n){ return String(n).padStart(2,"0"); }
+  function isoDate(y,m,d){ return `${y}-${pad(m+1)}-${pad(d)}`; }
+  function displayDate(iso){
+    if (!iso) return "";
+    const [y,m,d] = iso.split("-");
+    return `${d}.${m}.${y}`;
+  }
+  function parseIso(iso){
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || "")) return null;
+    const [y,m,d] = iso.split("-").map(Number);
+    return new Date(y,m-1,d);
+  }
+  function mondayIndex(jsDay){ return (jsDay + 6) % 7; }
+
+  function enhance(input){
+    if (!input || input.dataset.euReady === "1") return;
+    input.dataset.euReady = "1";
+    input.readOnly = true;
+    input.setAttribute("inputmode","none");
+    input.setAttribute("autocomplete","off");
+
+    const wrap = document.createElement("div");
+    wrap.className = "eu-date-wrap";
+    input.parentNode.insertBefore(wrap, input);
+    wrap.appendChild(input);
+
+    const cal = document.createElement("div");
+    cal.className = "eu-calendar";
+    wrap.appendChild(cal);
+
+    let current = parseIso(input.dataset.iso) || new Date();
+    current = new Date(current.getFullYear(), current.getMonth(), 1);
+
+    function close(){ cal.classList.remove("open"); }
+    function setValue(iso){
+      input.dataset.iso = iso;
+      input.value = displayDate(iso);
+      input.dispatchEvent(new Event("change", {bubbles:true}));
+      close();
+    }
+    function render(){
+      const y = current.getFullYear();
+      const m = current.getMonth();
+      const first = new Date(y,m,1);
+      const gridStart = new Date(y,m,1 - mondayIndex(first.getDay()));
+      const selected = input.dataset.iso || "";
+      const today = new Date();
+      const todayIso = isoDate(today.getFullYear(),today.getMonth(),today.getDate());
+
+      cal.innerHTML = "";
+      const head = document.createElement("div");
+      head.className = "eu-cal-head";
+      const prev = document.createElement("button");
+      prev.type = "button"; prev.className = "eu-cal-nav"; prev.textContent = "‹";
+      const title = document.createElement("div");
+      title.className = "eu-cal-title"; title.textContent = `${MONTHS[m]} ${y}`;
+      const next = document.createElement("button");
+      next.type = "button"; next.className = "eu-cal-nav"; next.textContent = "›";
+      prev.addEventListener("click", e => { e.stopPropagation(); current = new Date(y,m-1,1); render(); });
+      next.addEventListener("click", e => { e.stopPropagation(); current = new Date(y,m+1,1); render(); });
+      head.append(prev,title,next); cal.appendChild(head);
+
+      const grid = document.createElement("div");
+      grid.className = "eu-cal-grid";
+      WEEKDAYS.forEach(label => {
+        const el = document.createElement("div"); el.className="eu-cal-weekday"; el.textContent=label; grid.appendChild(el);
+      });
+      for (let i=0;i<42;i++){
+        const date = new Date(gridStart); date.setDate(gridStart.getDate()+i);
+        const iso = isoDate(date.getFullYear(),date.getMonth(),date.getDate());
+        const btn = document.createElement("button");
+        btn.type="button"; btn.className="eu-cal-day"; btn.textContent=String(date.getDate());
+        if (date.getMonth() !== m) btn.classList.add("other");
+        if (iso === selected) btn.classList.add("selected");
+        if (iso === todayIso) btn.classList.add("today");
+        btn.addEventListener("click", e => { e.stopPropagation(); setValue(iso); });
+        grid.appendChild(btn);
+      }
+      cal.appendChild(grid);
+
+      const footer = document.createElement("div"); footer.className="eu-cal-footer";
+      const clear = document.createElement("button"); clear.type="button"; clear.className="eu-cal-link"; clear.textContent="Tühjenda";
+      const todayBtn = document.createElement("button"); todayBtn.type="button"; todayBtn.className="eu-cal-link"; todayBtn.textContent="Täna";
+      clear.addEventListener("click", e => { e.stopPropagation(); setValue(""); });
+      todayBtn.addEventListener("click", e => { e.stopPropagation(); setValue(todayIso); });
+      footer.append(clear,todayBtn); cal.appendChild(footer);
+    }
+
+    input.addEventListener("click", e => {
+      e.stopPropagation();
+      document.querySelectorAll(".eu-calendar.open").forEach(other => { if (other !== cal) other.classList.remove("open"); });
+      render(); cal.classList.toggle("open");
+    });
+    cal.addEventListener("click", e => e.stopPropagation());
+  }
+
+  document.querySelectorAll(".eu-date-input").forEach(enhance);
+  document.addEventListener("click", () => document.querySelectorAll(".eu-calendar.open").forEach(cal => cal.classList.remove("open")));
+})();
+</script>
+
 </body>
 </html>
