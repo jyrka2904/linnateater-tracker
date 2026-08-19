@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Loo konto · Linnateater Tracker{% endblock %}
+{% block title %}Loo konto · Piletivaht{% endblock %}
 {% block layout %}
 <div class="auth-page">
   <section class="auth-art">
-    <a class="logo" href="/login"><span class="logo-mark">L</span> Linnateater Tracker</a>
+    <a class="logo" href="/login"><img class="logo-icon" src="{{ url_for('static', filename='logo-piletivaht.svg') }}" alt=""><span class="logo-stack"><strong>Piletivaht</strong><small>teatrite piletijälgija</small></span></a>
     <h1>Üks SMS. Siis piisab paroolist.</h1>
-    <p class="auth-caption">Kinnitame sinu telefoninumbri konto loomisel ühe korra. Edaspidi logid sisse telefoninumbri ja enda valitud parooliga.</p>
+    <p class="auth-caption">Kinnitame sinu telefoninumbri konto loomisel ühe korra. Edaspidi logid sisse telefoninumbri ja enda valitud parooliga ning saad kasutada sama kontot ka siis, kui lisame järgmised teatrid.</p>
   </section>
   <section class="auth-panel">
     <div class="auth-box">

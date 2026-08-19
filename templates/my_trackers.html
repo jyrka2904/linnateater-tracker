@@ -1,8 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Minu jälgimised · Linnateater Tracker{% endblock %}
+{% block title %}Minu jälgimised · Piletivaht{% endblock %}
 {% block body %}
 <header class="topbar">
-  <a class="logo" href="/dashboard"><span class="logo-mark">L</span> Linnateater Tracker</a>
+  <a class="logo" href="/dashboard">
+    <img class="logo-icon" src="{{ url_for('static', filename='logo-piletivaht.svg') }}" alt="">
+    <span class="logo-stack"><strong>Piletivaht</strong><small>teatrite piletijälgija</small></span>
+  </a>
   <nav class="main-nav">
     <a href="/dashboard">Repertuaar</a>
     <a class="active" href="/my-trackers">Minu jälgimised <span class="nav-count">{{ tracker_count }}</span></a>
@@ -19,12 +22,29 @@
   <section class="hero">
     <div>
       <div class="kicker">Minu jälgimised</div>
-      <h1>Need on<br>radaril.</h1>
+      <h1>Sinu radar.<br>Ühes vaates.</h1>
+      <div>
+        <span class="hero-chip">{{ tracker_count }} aktiivset etendust</span>
+        <span class="hero-chip">SMS teavitus kohe, kui pilet tekib</span>
+      </div>
     </div>
-    <p class="hero-copy">
-      Kontrollime iga aktiivset etendust automaatselt.
-      Kui pilet tekib, saadame SMS-i ja eemaldame jälgimise.
-    </p>
+    <div class="hero-side">
+      <p class="hero-copy">
+        Hoia kõik jälgitavad etendused ühes kohas. Kui lisame järgmised teatrid, kuvatakse need samas nimekirjas koos teatri- ja kuupäevafiltritega.
+      </p>
+      <div class="hero-panel">
+        <div class="stat-card">
+          <div class="stat-label">Aktiivsed</div>
+          <div class="stat-value">{{ tracker_count }}</div>
+          <div class="stat-note">Jälgimist praegu töös.</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Mahutavus</div>
+          <div class="stat-value">{{ max_trackers }}</div>
+          <div class="stat-note">Maksimaalne jälgimiste arv konto kohta.</div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <div class="flash-stack">
@@ -39,12 +59,45 @@
         <div class="kicker">{{ tracker_count }} / {{ max_trackers }} aktiivset</div>
         <h2 class="section-title">Aktiivsed etendused</h2>
       </div>
+      <div class="section-note">
+        Filtreeri jälgimisi teatri, kuupäeva või lavastuse nime järgi.
+      </div>
     </div>
 
     {% if trackers %}
-      <div class="tracker-grid">
+      <div class="tracker-toolbar">
+        <div class="filter-bar">
+          <div class="filter-group filter-grow">
+            <label class="filter-label" for="tracker-search">Otsi jälgimist</label>
+            <input class="filter-control" id="tracker-search" placeholder="Nt Krum või Karussell" autocomplete="off">
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="tracker-theatre-filter">Teater</label>
+            <select class="filter-control" id="tracker-theatre-filter">
+              <option value="">Kõik teatrid</option>
+              {% for theatre in theatre_options %}
+                <option value="{{ theatre.slug }}">{{ theatre.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="tracker-date-filter">Kuupäev</label>
+            <input class="filter-control" id="tracker-date-filter" type="date">
+          </div>
+          <button class="filter-reset" id="tracker-clear-filters" type="button">Lähtesta</button>
+        </div>
+      </div>
+
+      <div class="grid-meta">
+        <div class="grid-count" id="tracker-count">{{ trackers|length }} aktiivset jälgimist</div>
+      </div>
+
+      <div class="tracker-grid" id="tracker-grid">
         {% for t in trackers %}
-          <article class="tracker-card">
+          <article class="tracker-card"
+                   data-title="{{ t.title|e }}"
+                   data-theatre="{{ t.theatre_slug|e }}"
+                   data-date="{{ t.event_date_iso|e }}">
             {% if t.image_url %}
               <img src="{{ t.image_url }}" alt="{{ t.title }}" loading="lazy" decoding="async">
             {% endif %}
@@ -60,15 +113,14 @@
               {% endif %}
 
               <div>
+                <div class="tracker-theatre">{{ t.theatre_name }}</div>
                 <h3 class="tracker-title">{{ t.title }}</h3>
                 <div class="tracker-date">{{ t.date_text or t.event_code }}</div>
 
                 {% if t.last_error %}
                   <div class="tracker-meta">{{ t.last_error }}</div>
                 {% elif t.last_checked_at %}
-                  <div class="tracker-meta">
-                    {{ t.last_status or "Kontrollitud" }}
-                  </div>
+                  <div class="tracker-meta">{{ t.last_status or "Kontrollitud" }}</div>
                 {% else %}
                   <div class="tracker-meta">Jälgimine aktiivne</div>
                 {% endif %}
@@ -85,6 +137,7 @@
           </article>
         {% endfor %}
       </div>
+      <div class="catalog-empty" id="tracker-empty" hidden>Ükski jälgimine ei vasta praegustele filtritele.</div>
     {% else %}
       <div class="empty-state">
         Praegu ei ole ühtegi aktiivset jälgimist.
@@ -97,4 +150,51 @@
     {% endif %}
   </section>
 </main>
+
+<script>
+(() => {
+  const grid = document.getElementById("tracker-grid");
+  if (!grid) return;
+
+  const cards = [...grid.querySelectorAll(".tracker-card")];
+  const search = document.getElementById("tracker-search");
+  const theatreFilter = document.getElementById("tracker-theatre-filter");
+  const dateFilter = document.getElementById("tracker-date-filter");
+  const clearFilters = document.getElementById("tracker-clear-filters");
+  const count = document.getElementById("tracker-count");
+  const empty = document.getElementById("tracker-empty");
+
+  function applyFilters() {
+    const q = (search.value || "").trim().toLocaleLowerCase("et");
+    const theatre = theatreFilter.value || "";
+    const date = dateFilter.value || "";
+    let visible = 0;
+
+    cards.forEach(card => {
+      const title = card.dataset.title.toLocaleLowerCase("et");
+      const matchesSearch = !q || title.includes(q);
+      const matchesTheatre = !theatre || card.dataset.theatre === theatre;
+      const matchesDate = !date || card.dataset.date === date;
+
+      card.hidden = !(matchesSearch && matchesTheatre && matchesDate);
+      if (!card.hidden) visible += 1;
+    });
+
+    count.textContent = `${visible} aktiivset jälgimist`;
+    empty.hidden = visible !== 0;
+  }
+
+  search.addEventListener("input", applyFilters);
+  theatreFilter.addEventListener("change", applyFilters);
+  dateFilter.addEventListener("change", applyFilters);
+  clearFilters.addEventListener("click", () => {
+    search.value = "";
+    theatreFilter.value = "";
+    dateFilter.value = "";
+    applyFilters();
+  });
+
+  applyFilters();
+})();
+</script>
 {% endblock %}

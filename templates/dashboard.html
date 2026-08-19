@@ -1,8 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Jälgimised · Linnateater Tracker{% endblock %}
+{% block title %}Repertuaar · Piletivaht{% endblock %}
 {% block body %}
 <header class="topbar">
-  <a class="logo" href="/dashboard"><span class="logo-mark">L</span> Linnateater Tracker</a>
+  <a class="logo" href="/dashboard">
+    <img class="logo-icon" src="{{ url_for('static', filename='logo-piletivaht.svg') }}" alt="">
+    <span class="logo-stack"><strong>Piletivaht</strong><small>teatrite piletijälgija</small></span>
+  </a>
   <nav class="main-nav">
     <a class="active" href="/dashboard">Repertuaar</a>
     <a href="/my-trackers">Minu jälgimised <span class="nav-count">{{ tracker_count }}</span></a>
@@ -18,13 +21,31 @@
 <main class="main">
   <section class="hero">
     <div>
-      <div class="kicker">Mitteametlik pileti jälgija</div>
-      <h1>Ära värskenda.<br>Meie jälgime.</h1>
+      <div class="kicker">Teatrite piletijälgija</div>
+      <h1>Piletid. Ühes kohas.<br>Valmis järgmisteks teatriteks.</h1>
+      <div>
+        <span class="hero-chip">{{ tracker_count }} aktiivset jälgimist</span>
+        <span class="hero-chip">{{ theatre_options|length or 1 }} teater täna</span>
+        <span class="hero-chip">Valmis ka Draamateatri ja teiste jaoks</span>
+      </div>
     </div>
-    <p class="hero-copy">
-      Vali <strong>Linnateatri lavastus</strong> ja konkreetne etendus.
-      Kui Piletilevis tekib koht, saadame sulle kohe SMS-i.
-    </p>
+    <div class="hero-side">
+      <p class="hero-copy">
+        Täna saad jälgida <strong>Tallinna Linnateatri</strong> etendusi. Kujundus ja filtrid on nüüd valmis ka teiste teatrite lisamiseks — vali teater, kuupäev ja lavastus ühest kohast.
+      </p>
+      <div class="hero-panel">
+        <div class="stat-card">
+          <div class="stat-label">Repertuaar</div>
+          <div class="stat-value">{{ productions|length }}</div>
+          <div class="stat-note">Lavastust praegu nähtaval.</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Jälgimismahtu</div>
+          <div class="stat-value">{{ remaining_slots }}</div>
+          <div class="stat-note">Vaba kohta uute etenduste lisamiseks.</div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <div class="flash-stack">
@@ -37,11 +58,10 @@
     <div class="section-title-row">
       <div>
         <div class="kicker">01 · Repertuaar</div>
-        <h2 class="section-title">Millist lavastust ootad?</h2>
+        <h2 class="section-title">Vali teater, kuupäev ja lavastus.</h2>
       </div>
       <div class="section-note">
-        Vali lavastus pildilt. Seejärel näitame kõiki Piletilevist leitud
-        tulevasi kuupäevi ja kellaaegu.
+        Praegu on aktiivne allikas Tallinna Linnateater. Sama vaade on nüüd valmis ka järgmiste teatrite lisamiseks.
       </div>
     </div>
 
@@ -50,9 +70,36 @@
     {% endif %}
 
     {% if can_add and productions %}
-      <div class="search-row">
-        <input class="search" id="production-search"
-               placeholder="Otsi lavastust…" autocomplete="off">
+      <div class="catalog-toolbar">
+        <div class="filter-bar">
+          <div class="filter-group filter-grow">
+            <label class="filter-label" for="production-search">Otsi lavastust</label>
+            <input class="filter-control" id="production-search" placeholder="Nt Krum või Esietendus" autocomplete="off">
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="theatre-filter">Teater</label>
+            <select class="filter-control" id="theatre-filter">
+              <option value="">Kõik teatrid</option>
+              {% for theatre in theatre_options %}
+                <option value="{{ theatre.slug }}">{{ theatre.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="date-filter">Kuupäev</label>
+            <input class="filter-control" id="date-filter" type="date">
+          </div>
+          <button class="filter-reset" id="clear-filters" type="button">Lähtesta</button>
+        </div>
+        <div class="filter-help">Kuupäeva filter kasutab salvestatud Piletilevi etenduste nimekirja. Kui valid kuupäeva, jäävad nähtavale ainult lavastused, millel on sellel päeval mõni etendus.</div>
+      </div>
+
+      <div class="grid-meta">
+        <div class="grid-count" id="production-count">{{ productions|length }} lavastust</div>
+        <div>
+          <span class="stat-chip">Vali kaardilt lavastus</span>
+          <span class="stat-chip">Modalis saad valida mitu kuupäeva korraga</span>
+        </div>
       </div>
 
       <div class="production-grid" id="production-grid">
@@ -62,6 +109,9 @@
             class="production-card"
             data-title="{{ p.title|e }}"
             data-url="{{ p.production_url|e }}"
+            data-theatre="{{ p.theatre_slug|e }}"
+            data-theatre-name="{{ p.theatre_name|e }}"
+            data-dates="{{ p.available_dates_csv|e }}"
             aria-label="Vali {{ p.title|e }}"
           >
             <span class="production-graphic">{{ "%02d"|format(loop.index) }}</span>
@@ -77,12 +127,16 @@
               >
             {% endif %}
             <span class="production-content">
-              <span class="production-index">Tallinna Linnateater</span>
+              <span class="production-index">{{ p.theatre_name }}</span>
               <span class="production-title">{{ p.title }}</span>
+              {% if p.next_date_label %}
+                <span class="production-meta">Järgmine kuupäev: {{ p.next_date_label }}</span>
+              {% endif %}
             </span>
           </button>
         {% endfor %}
       </div>
+      <div class="catalog-empty" id="catalog-empty" hidden>Ükski lavastus ei vasta praegustele filtritele.</div>
 
     {% elif not can_add %}
       <div class="empty-state">
@@ -90,7 +144,6 @@
       </div>
     {% endif %}
   </section>
-
 </main>
 
 <div class="modal-backdrop" id="performance-modal" aria-hidden="true">
@@ -98,13 +151,13 @@
     <button class="modal-close" id="modal-close" type="button" aria-label="Sulge">×</button>
 
     <div class="modal-visual">
-      <div class="production-graphic" id="modal-fallback">LT</div>
+      <div class="production-graphic" id="modal-fallback">PV</div>
       <img id="modal-image" alt="" style="display:none">
       <div class="modal-name" id="modal-production-name"></div>
     </div>
 
     <div class="modal-body">
-      <div class="modal-kicker">Vali etendus</div>
+      <div class="modal-kicker" id="modal-kicker">Vali etendus</div>
       <h3 class="modal-title">Kuupäev ja kellaaeg</h3>
       <p class="modal-sub">
         Valime Piletilevi seeriast täpse etenduse. Jälgimine algab kohe pärast kinnitamist.
@@ -116,6 +169,8 @@
         <input type="hidden" name="title" id="title">
         <input type="hidden" name="image_url" id="image_url">
         <input type="hidden" name="production_url" id="production_url">
+        <input type="hidden" name="theatre_name" id="theatre_name">
+        <input type="hidden" name="theatre_slug" id="theatre_slug">
         <input type="hidden" name="selected_event_codes" id="selected_event_codes">
 
         <div class="modal-footer">
@@ -131,7 +186,6 @@
   </section>
 </div>
 
-
 <script>
 (() => {
   const grid = document.getElementById("production-grid");
@@ -139,11 +193,17 @@
 
   const cards = [...grid.querySelectorAll(".production-card")];
   const search = document.getElementById("production-search");
+  const theatreFilter = document.getElementById("theatre-filter");
+  const dateFilter = document.getElementById("date-filter");
+  const clearFilters = document.getElementById("clear-filters");
+  const count = document.getElementById("production-count");
+  const emptyState = document.getElementById("catalog-empty");
   const remainingSlots = {{ remaining_slots|int }};
 
   const modal = document.getElementById("performance-modal");
   const modalClose = document.getElementById("modal-close");
   const modalName = document.getElementById("modal-production-name");
+  const modalKicker = document.getElementById("modal-kicker");
   const modalImage = document.getElementById("modal-image");
   const modalFallback = document.getElementById("modal-fallback");
   const performanceArea = document.getElementById("performance-area");
@@ -152,9 +212,18 @@
   const titleField = document.getElementById("title");
   const imageField = document.getElementById("image_url");
   const productionUrlField = document.getElementById("production_url");
+  const theatreNameField = document.getElementById("theatre_name");
+  const theatreSlugField = document.getElementById("theatre_slug");
   const selectedCodesField = document.getElementById("selected_event_codes");
 
   let selected = new Map();
+
+  function dateTextToIso(dateText) {
+    const match = (dateText || "").match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+    if (!match) return "";
+    const [, d, m, y] = match;
+    return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
 
   async function getProductionImage(url, cardImage, title) {
     if (cardImage) return cardImage;
@@ -214,6 +283,29 @@
     resetSelection();
   }
 
+  function applyFilters() {
+    const q = (search.value || "").trim().toLocaleLowerCase("et");
+    const theatre = theatreFilter.value || "";
+    const date = dateFilter.value || "";
+    let visible = 0;
+
+    cards.forEach(card => {
+      const title = card.dataset.title.toLocaleLowerCase("et");
+      const theatreSlug = card.dataset.theatre || "";
+      const dates = (card.dataset.dates || "").split(",").filter(Boolean);
+
+      const matchesSearch = !q || title.includes(q);
+      const matchesTheatre = !theatre || theatreSlug === theatre;
+      const matchesDate = !date || dates.includes(date);
+
+      card.hidden = !(matchesSearch && matchesTheatre && matchesDate);
+      if (!card.hidden) visible += 1;
+    });
+
+    count.textContent = `${visible} lavastust`;
+    emptyState.hidden = visible !== 0;
+  }
+
   modalClose.addEventListener("click", closeModal);
   modal.addEventListener("click", event => {
     if (event.target === modal) closeModal();
@@ -254,6 +346,9 @@
 
     const title = card.dataset.title;
     const productionUrl = card.dataset.url;
+    const theatreName = card.dataset.theatreName || "Tallinna Linnateater";
+    const theatreSlug = card.dataset.theatre || "linnateater";
+    const selectedDate = dateFilter.value || "";
     const img = card.querySelector(".production-thumb");
     const cardImage = img && img.complete && img.naturalWidth
       ? (img.currentSrc || img.src)
@@ -261,16 +356,18 @@
 
     titleField.value = title;
     productionUrlField.value = productionUrl;
+    theatreNameField.value = theatreName;
+    theatreSlugField.value = theatreSlug;
     imageField.value = cardImage || "";
 
     modalName.textContent = title;
+    modalKicker.textContent = theatreName;
     modalImage.style.display = "none";
     modalFallback.style.display = "grid";
     performanceArea.className = "picker-msg";
     performanceArea.textContent = "Laen Piletilevist etendusi…";
     openModal();
 
-    // Image lookup never blocks the faster Piletilevi date request.
     getProductionImage(productionUrl, cardImage, title).then(image => {
       imageField.value = image || "";
       if (!image) return;
@@ -298,10 +395,15 @@
         );
       }
 
+      const filtered = selectedDate
+        ? data.performances.filter(item => dateTextToIso(item.date_text) === selectedDate)
+        : data.performances;
+      const performances = filtered.length ? filtered : data.performances;
+
       performanceArea.className = "performance-list";
       performanceArea.innerHTML = "";
 
-      data.performances.forEach(item => {
+      performances.forEach(item => {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "performance-option";
@@ -326,13 +428,17 @@
     card.addEventListener("click", () => selectProduction(card));
   });
 
-  search.addEventListener("input", () => {
-    const q = search.value.trim().toLocaleLowerCase("et");
-    cards.forEach(card => {
-      card.hidden = !!q &&
-        !card.dataset.title.toLocaleLowerCase("et").includes(q);
-    });
+  search.addEventListener("input", applyFilters);
+  theatreFilter.addEventListener("change", applyFilters);
+  dateFilter.addEventListener("change", applyFilters);
+  clearFilters.addEventListener("click", () => {
+    search.value = "";
+    theatreFilter.value = "";
+    dateFilter.value = "";
+    applyFilters();
   });
+
+  applyFilters();
 })();
 </script>
 
