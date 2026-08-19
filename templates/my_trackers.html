@@ -19,16 +19,6 @@
 </header>
 
 <main class="main">
-  <section class="page-intro">
-    <div>
-      <div class="kicker">Minu jälgimised</div>
-      <h1>Aktiivsed etendused.</h1>
-    </div>
-    <div class="intro-meta">
-      <span class="intro-pill">{{ tracker_count }} / {{ max_trackers }} aktiivset</span>
-      <span class="intro-pill">SMS teavitus aktiivne</span>
-    </div>
-  </section>
 
   <div class="flash-stack">
     {% for category,message in get_flashed_messages(with_categories=true) %}

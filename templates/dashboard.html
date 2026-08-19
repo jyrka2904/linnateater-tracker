@@ -19,16 +19,6 @@
 </header>
 
 <main class="main">
-  <section class="page-intro">
-    <div>
-      <div class="kicker">Repertuaar</div>
-      <h1>Leia etendus, mida jälgida.</h1>
-    </div>
-    <div class="intro-meta">
-      <span class="intro-pill">{{ productions|length }} lavastust</span>
-      <span class="intro-pill">{{ tracker_count }} aktiivset jälgimist</span>
-    </div>
-  </section>
 
   <div class="flash-stack">
     {% for category,message in get_flashed_messages(with_categories=true) %}
