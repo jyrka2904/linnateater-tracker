@@ -472,35 +472,19 @@ def dashboard():
                 production["display_image_url"] = ""
 
             cached_performances = get_cached_performances(production["production_url"]) or []
-            production["cached_performances"] = cached_performances
             seen_dates = set()
             available_dates = []
             next_date_label = ""
-            statuses = []
 
             for item in cached_performances:
                 if not next_date_label and item.get("date_text"):
                     next_date_label = item["date_text"]
-
-                status_value = (item.get("status") or "").lower()
-                if status_value:
-                    statuses.append(status_value)
 
                 iso_date = parse_event_date_iso(item.get("date_text") or "")
                 if iso_date and iso_date not in seen_dates:
                     seen_dates.add(iso_date)
                     available_dates.append(iso_date)
 
-            card_status = "available"
-            if statuses:
-                if any("saadav" in status and "piiratud" not in status for status in statuses):
-                    card_status = "available"
-                elif any("piiratud" in status for status in statuses):
-                    card_status = "limited"
-                else:
-                    card_status = "soldout"
-
-            production["card_status"] = card_status
             production["available_dates"] = available_dates
             production["available_dates_csv"] = ",".join(available_dates)
             production["next_date_label"] = next_date_label
@@ -520,14 +504,12 @@ def dashboard():
         "dashboard.html",
         user=user,
         tracker_count=len(trackers),
-        trackers=trackers,
         productions=productions,
         productions_error=productions_error,
         max_trackers=MAX_TRACKERS,
         remaining_slots=remaining_slots,
         can_add=remaining_slots > 0,
         theatre_options=theatre_options,
-        support_theatres=["Tallinna Linnateater", "Eesti Draamateater", "Vanemuine"],
     )
 
 
