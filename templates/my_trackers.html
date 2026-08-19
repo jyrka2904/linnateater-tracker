@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Minu jälgimised · Linnateater Tracker{% endblock %}
+{% block body %}
+<header class="topbar">
+  <a class="logo" href="/dashboard"><span class="logo-mark">L</span> Linnateater Tracker</a>
+  <nav class="main-nav">
+    <a href="/dashboard">Repertuaar</a>
+    <a class="active" href="/my-trackers">Minu jälgimised <span class="nav-count">{{ tracker_count }}</span></a>
+  </nav>
+  <div class="top-actions">
+    <span class="account-label">{{ user.phone_number }}</span>
+    <form method="post" action="/logout">
+      <button class="nav-btn">Logi välja</button>
+    </form>
+  </div>
+</header>
+
+<main class="main">
+  <section class="hero">
+    <div>
+      <div class="kicker">Minu jälgimised</div>
+      <h1>Need on<br>radaril.</h1>
+    </div>
+    <p class="hero-copy">
+      Kontrollime iga aktiivset etendust automaatselt.
+      Kui pilet tekib, saadame SMS-i ja eemaldame jälgimise.
+    </p>
+  </section>
+
+  <div class="flash-stack">
+    {% for category,message in get_flashed_messages(with_categories=true) %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  </div>
+
+  <section class="section">
+    <div class="section-title-row">
+      <div>
+        <div class="kicker">{{ tracker_count }} / {{ max_trackers }} aktiivset</div>
+        <h2 class="section-title">Aktiivsed etendused</h2>
+      </div>
+      <div class="section-note">
+        Kontroll toimub iga 15–30 sekundi järel.
+      </div>
+    </div>
+
+    {% if trackers %}
+      <div class="tracker-grid">
+        {% for t in trackers %}
+          <article class="tracker-card">
+            {% if t.image_url %}
+              <img src="{{ t.image_url }}" alt="{{ t.title }}" loading="lazy" decoding="async">
+            {% endif %}
+            <div class="tracker-inner">
+              {% if t.last_error %}
+                <div class="status-pill">
+                  <span class="status-dot error"></span> Kontrolli viga
+                </div>
+              {% else %}
+                <div class="status-pill">
+                  <span class="status-dot"></span> Jälgimine aktiivne
+                </div>
+              {% endif %}
+
+              <div>
+                <h3 class="tracker-title">{{ t.title }}</h3>
+                <div class="tracker-date">{{ t.date_text or t.event_code }}</div>
+
+                {% if t.last_error %}
+                  <div class="tracker-meta">{{ t.last_error }}</div>
+                {% elif t.last_checked_at %}
+                  <div class="tracker-meta">
+                    {{ t.last_status or "Kontrollitud" }} ·
+                    {{ t.last_checked_at.strftime("%d.%m.%Y %H:%M:%S") }}
+                  </div>
+                {% else %}
+                  <div class="tracker-meta">Esimene kontroll on tulemas</div>
+                {% endif %}
+
+                <div class="tracker-actions">
+                  <a class="external" href="{{ t.event_url }}"
+                     target="_blank" rel="noopener">Piletilevi ↗</a>
+                  <form method="post" action="/trackers/{{ t.id }}/delete">
+                    <button class="remove">Eemalda</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">
+        Praegu ei ole ühtegi aktiivset jälgimist.
+        <div style="margin-top:18px">
+          <a class="watch-btn" href="/dashboard" style="display:inline-block;text-decoration:none">
+            Vali repertuaarist etendus
+          </a>
+        </div>
+      </div>
+    {% endif %}
+  </section>
+</main>
+{% endblock %}

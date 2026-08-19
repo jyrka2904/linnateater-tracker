@@ -3,6 +3,10 @@
 {% block body %}
 <header class="topbar">
   <a class="logo" href="/dashboard"><span class="logo-mark">L</span> Linnateater Tracker</a>
+  <nav class="main-nav">
+    <a class="active" href="/dashboard">Repertuaar</a>
+    <a href="/my-trackers">Minu jälgimised <span class="nav-count">{{ tracker_count }}</span></a>
+  </nav>
   <div class="top-actions">
     <span class="account-label">{{ user.phone_number }}</span>
     <form method="post" action="/logout">
@@ -61,16 +65,13 @@
             aria-label="Vali {{ p.title|e }}"
           >
             <span class="production-graphic">{{ "%02d"|format(loop.index) }}</span>
-            {% if p.image_url %}
-              <img
-                src="{{ p.image_url }}"
-                alt="{{ p.title }}"
-                loading="lazy"
-                decoding="async"
-                onload="this.previousElementSibling.style.display='none'"
-                onerror="this.style.display='none'"
-              >
-            {% endif %}
+            <img
+              class="production-thumb"
+              alt="{{ p.title }}"
+              loading="lazy"
+              decoding="async"
+              style="display:none"
+            >
             <span class="production-content">
               <span class="production-index">Tallinna Linnateater</span>
               <span class="production-title">{{ p.title }}</span>
@@ -86,69 +87,6 @@
     {% endif %}
   </section>
 
-  <section class="section">
-    <div class="section-title-row">
-      <div>
-        <div class="kicker">02 · Jälgimisel</div>
-        <h2 class="section-title">Aktiivsed etendused</h2>
-      </div>
-      <div class="section-note">
-        {{ trackers|length }} / {{ max_trackers }} aktiivset ·
-        kontroll iga 15–30 sekundi järel.
-      </div>
-    </div>
-
-    {% if trackers %}
-      <div class="tracker-grid">
-        {% for t in trackers %}
-          <article class="tracker-card">
-            {% if t.image_url %}
-              <img src="{{ t.image_url }}" alt="{{ t.title }}">
-            {% endif %}
-            <div class="tracker-inner">
-              {% if t.last_error %}
-                <div class="status-pill">
-                  <span class="status-dot error"></span> Kontrolli viga
-                </div>
-              {% else %}
-                <div class="status-pill">
-                  <span class="status-dot"></span> Jälgimine aktiivne
-                </div>
-              {% endif %}
-
-              <div>
-                <h3 class="tracker-title">{{ t.title }}</h3>
-                <div class="tracker-date">{{ t.date_text or t.event_code }}</div>
-
-                {% if t.last_error %}
-                  <div class="tracker-meta">{{ t.last_error }}</div>
-                {% elif t.last_checked_at %}
-                  <div class="tracker-meta">
-                    {{ t.last_status or "Kontrollitud" }} ·
-                    {{ t.last_checked_at.strftime("%d.%m.%Y %H:%M:%S") }}
-                  </div>
-                {% else %}
-                  <div class="tracker-meta">Esimene kontroll on tulemas</div>
-                {% endif %}
-
-                <div class="tracker-actions">
-                  <a class="external" href="{{ t.event_url }}"
-                     target="_blank" rel="noopener">Piletilevi ↗</a>
-                  <form method="post" action="/trackers/{{ t.id }}/delete">
-                    <button class="remove">Eemalda</button>
-                  </form>
-                </div>
-              </div>
-            </div>
-          </article>
-        {% endfor %}
-      </div>
-    {% else %}
-      <div class="empty-state">
-        Veel ei jälgi ühtegi etendust. Vali repertuaarist esimene.
-      </div>
-    {% endif %}
-  </section>
 </main>
 
 <div class="modal-backdrop" id="performance-modal" aria-hidden="true">
@@ -220,23 +158,51 @@
 
   const imageCache = new Map();
 
-  async function getProductionImage(url, cardImage) {
-    // Use the lightweight thumbnail already loaded in the repertoire first.
-    if (cardImage) return cardImage;
-    if (imageCache.has(url)) return imageCache.get(url);
-
-    // Only if that thumbnail did not exist do we fetch one production page.
+  // Paint the page first. Then fetch all cached/needed image URLs in ONE
+  // background request. The server resolves missing images concurrently and
+  // stores them in PostgreSQL for later visits.
+  setTimeout(async () => {
     try {
-      const params = new URLSearchParams({production_url: url});
-      const r = await fetch("/api/production-image?" + params.toString());
-      const data = await r.json();
-      const image = data.ok ? (data.image_url || "") : "";
-      imageCache.set(url, image);
-      return image;
+      const response = await fetch("/api/production-images");
+      const data = await response.json();
+      if (!response.ok || !data.ok) return;
+
+      cards.forEach(card => {
+        const url = data.images?.[card.dataset.url] || "";
+        if (!url) return;
+
+        imageCache.set(card.dataset.url, url);
+        const img = card.querySelector(".production-thumb");
+        const fallback = card.querySelector(".production-graphic");
+        if (!img) return;
+
+        img.onload = () => {
+          img.style.display = "block";
+          if (fallback) fallback.style.display = "none";
+        };
+        img.src = url;
+      });
     } catch {
-      return "";
+      // Repertoire remains fully usable without images.
     }
+  }, 150);
+
+
+async function getProductionImage(url, cardImage) {
+  if (cardImage) return cardImage;
+  if (imageCache.has(url)) return imageCache.get(url);
+
+  try {
+    const params = new URLSearchParams({production_url: url});
+    const r = await fetch("/api/production-image?" + params.toString());
+    const data = await r.json();
+    const image = data.ok ? (data.image_url || "") : "";
+    imageCache.set(url, image);
+    return image;
+  } catch {
+    return "";
   }
+}
 
   function clearChoice() {
     Object.values(fields).forEach(el => el.value = "");
