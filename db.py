@@ -59,6 +59,12 @@ def init_db():
             cur.execute(
                 "ALTER TABLE trackers ADD COLUMN IF NOT EXISTS production_url TEXT"
             )
+            cur.execute(
+                "ALTER TABLE trackers ADD COLUMN IF NOT EXISTS theatre_name TEXT DEFAULT 'Tallinna Linnateater'"
+            )
+            cur.execute(
+                "ALTER TABLE trackers ADD COLUMN IF NOT EXISTS theatre_slug TEXT DEFAULT 'linnateater'"
+            )
 
             cur.execute(
                 """

@@ -60,6 +60,23 @@ def validate_password(password: str):
         raise ValueError("Parool on liiga pikk.")
 
 
+def parse_event_date_iso(date_text: str) -> str:
+    match = re.search(r"(\d{1,2})\.(\d{1,2})\.(\d{4})", date_text or "")
+    if not match:
+        return ""
+
+    day, month, year = match.groups()
+    return f"{year}-{int(month):02d}-{int(day):02d}"
+
+
+def default_theatre_name() -> str:
+    return "Tallinna Linnateater"
+
+
+def default_theatre_slug() -> str:
+    return "linnateater"
+
+
 def get_user_by_phone(phone):
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -430,12 +447,19 @@ def dashboard():
     user = current_user()
     trackers = load_user_trackers(user["id"])
 
+    theatre_options = []
+
     try:
         productions = list_productions()
         productions_error = None
         media_manifest = get_media_manifest()
+        theatre_map = {}
 
         for production in productions:
+            production["theatre_name"] = production.get("theatre_name") or default_theatre_name()
+            production["theatre_slug"] = production.get("theatre_slug") or default_theatre_slug()
+            theatre_map[production["theatre_slug"]] = production["theatre_name"]
+
             media = media_manifest.get(production["slug"])
             if media:
                 version = int(media["updated_at"].timestamp())
@@ -446,6 +470,30 @@ def dashboard():
                 )
             else:
                 production["display_image_url"] = ""
+
+            cached_performances = get_cached_performances(production["production_url"]) or []
+            seen_dates = set()
+            available_dates = []
+            next_date_label = ""
+
+            for item in cached_performances:
+                if not next_date_label and item.get("date_text"):
+                    next_date_label = item["date_text"]
+
+                iso_date = parse_event_date_iso(item.get("date_text") or "")
+                if iso_date and iso_date not in seen_dates:
+                    seen_dates.add(iso_date)
+                    available_dates.append(iso_date)
+
+            production["available_dates"] = available_dates
+            production["available_dates_csv"] = ",".join(available_dates)
+            production["next_date_label"] = next_date_label
+
+        theatre_options = [
+            {"slug": slug, "name": name}
+            for slug, name in sorted(theatre_map.items(), key=lambda item: item[1])
+        ]
+
     except Exception as e:
         productions = []
         productions_error = str(e)
@@ -461,6 +509,7 @@ def dashboard():
         max_trackers=MAX_TRACKERS,
         remaining_slots=remaining_slots,
         can_add=remaining_slots > 0,
+        theatre_options=theatre_options,
     )
 
 
@@ -471,12 +520,48 @@ def my_trackers():
     trackers = load_user_trackers(user["id"])
     backfill_tracker_images(trackers)
 
+    theatre_map = {}
+
+    try:
+        productions = list_productions()
+        production_by_url = {p["production_url"]: p for p in productions}
+        media_manifest = get_media_manifest()
+    except Exception:
+        production_by_url = {}
+        media_manifest = {}
+
+    for tracker in trackers:
+        tracker["theatre_name"] = tracker.get("theatre_name") or default_theatre_name()
+        tracker["theatre_slug"] = tracker.get("theatre_slug") or default_theatre_slug()
+        tracker["event_date_iso"] = parse_event_date_iso(tracker.get("date_text") or "")
+
+        production = production_by_url.get(tracker.get("production_url") or "")
+        if production:
+            tracker["theatre_name"] = production.get("theatre_name") or default_theatre_name()
+            tracker["theatre_slug"] = production.get("theatre_slug") or default_theatre_slug()
+            media = media_manifest.get(production["slug"])
+            if media:
+                version = int(media["updated_at"].timestamp())
+                tracker["image_url"] = url_for(
+                    "production_media_asset",
+                    slug=production["slug"],
+                    v=version,
+                )
+
+        theatre_map[tracker["theatre_slug"]] = tracker["theatre_name"]
+
+    theatre_options = [
+        {"slug": slug, "name": name}
+        for slug, name in sorted(theatre_map.items(), key=lambda item: item[1])
+    ]
+
     return render_template(
         "my_trackers.html",
         user=user,
         trackers=trackers,
         tracker_count=len(trackers),
         max_trackers=MAX_TRACKERS,
+        theatre_options=theatre_options,
     )
 
 
@@ -578,6 +663,8 @@ def add_tracker():
     title = (request.form.get("title") or "").strip()
     production_url = (request.form.get("production_url") or "").strip()
     image_url = (request.form.get("image_url") or "").strip()
+    theatre_name = (request.form.get("theatre_name") or default_theatre_name()).strip() or default_theatre_name()
+    theatre_slug = (request.form.get("theatre_slug") or default_theatre_slug()).strip() or default_theatre_slug()
 
     try:
         selected_codes = json.loads(
@@ -647,9 +734,10 @@ def add_tracker():
                         """
                         INSERT INTO trackers (
                             user_id, title, date_text, event_url,
-                            series_url, event_code, image_url, production_url
+                            series_url, event_code, image_url, production_url,
+                            theatre_name, theatre_slug
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (user_id, event_code) DO NOTHING
                         RETURNING id
                         """,
@@ -657,6 +745,7 @@ def add_tracker():
                             user["id"], title, item["date_text"],
                             item["event_url"], item["series_url"],
                             item["event_code"], image_url, production_url,
+                            theatre_name, theatre_slug,
                         ),
                     )
                     if cur.fetchone():
