@@ -1,11 +1,9 @@
-# Piletivaht v33
+# Piletivaht v34
 
-Built directly on v32.
+Built directly on v33.
 
-Only the modal layout was changed:
-- image source/storage logic is untouched;
-- modal image keeps its own aspect ratio (`width:100%; height:auto`);
-- no forced fixed-height image area, so no top/bottom letterbox bands;
-- production title is now a separate block below the image instead of an absolute overlay;
-- long production titles wrap and use a smaller responsive maximum font size;
-- mobile forced modal image height was removed.
+Only the modal title presentation changed:
+- removed the beige title strip completely;
+- title is now overlaid directly on the image;
+- responsive font size and wrapping keep long titles visible;
+- no change to image selection, image storage, cropping logic, or database behavior.
