@@ -1,38 +1,29 @@
-# Linnateater Tracker v9
+# Linnateater Tracker v10
 
-## Fix: fake "Lavastused A-Z" production
+## Images without page lag
 
-The production parser now reads only real production title links inside H2
-elements on Linnateater's productions page.
+Production image discovery is no longer done by the user's browser.
 
-Navigation/actions such as:
-- Lavastused A-Z
-- Uuemad eespool
-- Liitu uudiskirjaga
-- Lavastuste arhiiv
+The Railway worker now refreshes the production image cache at startup and then
+periodically. Successful image URLs are persisted in PostgreSQL. The repertoire
+page only reads cached URLs and uses browser-native lazy image loading.
 
-can no longer enter the tracker repertoire.
+After the first v10 worker deployment, allow a short moment for previously
+missing images to be cached. Future page loads do not wait for external image
+discovery.
 
-## Fix: more complete production images
+## Multi-select performance dates
 
-Image resolution now uses layered fallbacks:
+Inside the production modal, performance dates are toggles. You can select
+several dates from the same production and then press one button, for example:
 
-1. image already embedded in the Linnateater production-list card;
-2. individual Linnateater production page;
-3. matching Piletilevi series page.
+    Jälgi 3 etendust
 
-Additional HTML image forms are supported:
-- `<source srcset>`
-- lazy-loading attributes
-- data-background/data-image attributes
-- CSS/background URLs
-
-Results are saved in the existing PostgreSQL image cache.
-
-Important: v9 retries cache rows whose previous image value was empty, so the
-grey cards created by v8 can repair themselves after deployment.
+Each selected date is stored as its own tracker. The app respects the remaining
+tracker limit and revalidates the chosen event codes against the Piletilevi
+series data before inserting them.
 
 ## Deploy
 
-Replace v8 repository files with this ZIP.
-No Railway/Twilio/PostgreSQL configuration changes are required.
+Replace v9 files with this ZIP. Railway, PostgreSQL and Twilio settings remain
+unchanged.

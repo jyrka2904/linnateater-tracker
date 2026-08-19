@@ -8,6 +8,7 @@ from twilio.rest import Client
 
 from db import get_conn, init_db
 from ticket_source import check_event
+from image_cache import refresh_production_images
 
 
 TZ = ZoneInfo("Europe/Tallinn")
@@ -21,6 +22,9 @@ TWILIO_MESSAGING_SERVICE_SID = os.environ[
 ]
 
 twilio = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+
+IMAGE_CACHE_REFRESH_SECONDS = 6 * 60 * 60
+_last_image_refresh = 0.0
 
 
 def get_trackers():
@@ -96,6 +100,33 @@ def send_and_remove(t):
     print(f"🗑 Tracker #{t['id']} removed after alert.", flush=True)
 
 
+def maybe_refresh_image_cache(force=False):
+    global _last_image_refresh
+    now = time.monotonic()
+    if (
+        not force
+        and _last_image_refresh
+        and now - _last_image_refresh < IMAGE_CACHE_REFRESH_SECONDS
+    ):
+        return
+
+    print("🖼 Refreshing Linnateater production image cache...", flush=True)
+    try:
+        total, resolved = refresh_production_images(max_workers=6)
+        _last_image_refresh = time.monotonic()
+        print(
+            f"🖼 Image cache ready: {resolved} refreshed / "
+            f"{total} productions checked.",
+            flush=True,
+        )
+    except Exception as error:
+        print(
+            f"⚠️ Image cache refresh failed: "
+            f"{type(error).__name__}: {error}",
+            flush=True,
+        )
+
+
 def run_cycle():
     trackers = get_trackers()
     print("", flush=True)
@@ -145,6 +176,7 @@ def main():
 
     while True:
         try:
+            maybe_refresh_image_cache()
             run_cycle()
         except Exception as e:
             print(

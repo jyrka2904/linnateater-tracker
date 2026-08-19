@@ -1,6 +1,6 @@
+import json
 import os
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import timedelta
 from functools import wraps
 
@@ -18,6 +18,7 @@ from twilio.rest import Client
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from db import get_conn, init_db
+from image_cache import get_cached_images
 from ticket_source import (
     list_performances,
     list_productions,
@@ -430,9 +431,18 @@ def dashboard():
     try:
         productions = list_productions()
         productions_error = None
+        cached_images = get_cached_images(productions)
+
+        for production in productions:
+            production["display_image_url"] = (
+                production.get("image_url")
+                or cached_images.get(production["production_url"], "")
+            )
     except Exception as e:
         productions = []
         productions_error = str(e)
+
+    remaining_slots = max(0, MAX_TRACKERS - len(trackers))
 
     return render_template(
         "dashboard.html",
@@ -441,7 +451,8 @@ def dashboard():
         productions=productions,
         productions_error=productions_error,
         max_trackers=MAX_TRACKERS,
-        can_add=len(trackers) < MAX_TRACKERS,
+        remaining_slots=remaining_slots,
+        can_add=remaining_slots > 0,
     )
 
 
@@ -459,86 +470,6 @@ def my_trackers():
         tracker_count=len(trackers),
         max_trackers=MAX_TRACKERS,
     )
-
-
-@app.get("/api/production-images")
-@login_required
-def api_production_images():
-    """
-    Return all production images in one request.
-
-    Cached URLs are read from PostgreSQL immediately. Missing URLs are fetched
-    concurrently from Linnateater and persisted, so later page loads do not
-    repeat those HTML requests.
-    """
-    try:
-        productions = list_productions()
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 502
-
-    urls = [p["production_url"] for p in productions]
-
-    cached = {}
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT production_url, image_url
-                FROM production_image_cache
-                WHERE production_url = ANY(%s)
-                  AND updated_at > NOW() - INTERVAL '7 days'
-                """,
-                (urls,),
-            )
-            for row in cur.fetchall():
-                cached[row["production_url"]] = row["image_url"]
-
-    by_url = {
-        p["production_url"]: p
-        for p in productions
-    }
-    missing = [url for url in urls if url not in cached or not cached[url]]
-
-    # One browser request; missing images are resolved concurrently and cached.
-    if missing:
-        def fetch_one(url):
-            item = by_url[url]
-            try:
-                return url, production_image(
-                    item["title"],
-                    item["production_url"],
-                )
-            except Exception:
-                return url, ""
-
-        fetched = {}
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            futures = [pool.submit(fetch_one, url) for url in missing]
-            for future in as_completed(futures):
-                url, image = future.result()
-                fetched[url] = image
-
-        if fetched:
-            with get_conn() as conn:
-                with conn.cursor() as cur:
-                    for url, image in fetched.items():
-                        cur.execute(
-                            """
-                            INSERT INTO production_image_cache (
-                                production_url, image_url, updated_at
-                            )
-                            VALUES (%s, %s, NOW())
-                            ON CONFLICT (production_url)
-                            DO UPDATE SET
-                                image_url=EXCLUDED.image_url,
-                                updated_at=NOW()
-                            """,
-                            (url, image),
-                        )
-
-        cached.update(fetched)
-
-    return jsonify({"ok": True, "images": cached})
 
 
 @app.get("/api/production-image")
@@ -584,62 +515,109 @@ def api_performances():
 @login_required
 def add_tracker():
     user = current_user()
-
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT COUNT(*) AS n FROM trackers WHERE user_id=%s",
-                (user["id"],),
-            )
-            if cur.fetchone()["n"] >= MAX_TRACKERS:
-                flash("Aktiivsete jälgimiste limiit on täis.", "error")
-                return redirect(url_for("dashboard"))
-
-    event_url = (request.form.get("event_url") or "").strip()
-    event_code = (request.form.get("event_code") or "").strip().upper()
-    series_url = (request.form.get("series_url") or "").strip()
     title = (request.form.get("title") or "").strip()
-    date_text = (request.form.get("date_text") or "").strip()
-    image_url = (request.form.get("image_url") or "").strip()
     production_url = (request.form.get("production_url") or "").strip()
+    image_url = (request.form.get("image_url") or "").strip()
 
-    if not all([event_url, event_code, series_url, title, date_text]):
-        flash("Etenduse info oli puudulik. Vali etendus uuesti.", "error")
+    try:
+        selected_codes = json.loads(
+            request.form.get("selected_event_codes") or "[]"
+        )
+    except Exception:
+        selected_codes = []
+
+    if not isinstance(selected_codes, list):
+        selected_codes = []
+
+    normalized_codes = []
+    seen = set()
+    for value in selected_codes:
+        code = str(value or "").strip().upper()
+        if not code or code in seen:
+            continue
+        if not re.fullmatch(r"[A-Z0-9]+", code):
+            continue
+        seen.add(code)
+        normalized_codes.append(code)
+
+    if not title or not production_url or not normalized_codes:
+        flash("Vali vähemalt üks kuupäev.", "error")
         return redirect(url_for("dashboard"))
 
     try:
+        performances = list_performances(title, production_url)
+        by_code = {
+            str(item["event_code"]).upper(): item
+            for item in performances
+        }
+        chosen = [by_code[code] for code in normalized_codes if code in by_code]
+
+        if not chosen:
+            flash(
+                "Valitud etendusi ei õnnestunud Piletilevist kinnitada.",
+                "error",
+            )
+            return redirect(url_for("dashboard"))
+
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """
-                    INSERT INTO trackers (
-                        user_id, title, date_text, event_url,
-                        series_url, event_code, image_url, production_url
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (user_id, event_code) DO NOTHING
-                    RETURNING id
-                    """,
-                    (
-                        user["id"],
-                        title,
-                        date_text,
-                        event_url,
-                        series_url,
-                        event_code,
-                        image_url,
-                        production_url,
-                    ),
+                    "SELECT event_code FROM trackers WHERE user_id=%s",
+                    (user["id"],),
                 )
-                row = cur.fetchone()
+                existing_codes = {
+                    str(row["event_code"]).upper() for row in cur.fetchall()
+                }
+                new_items = [
+                    item for item in chosen
+                    if str(item["event_code"]).upper() not in existing_codes
+                ]
+                remaining = max(0, MAX_TRACKERS - len(existing_codes))
 
-        if row:
-            flash(f"Jälgimine lisatud: {title} · {date_text}", "success")
-        else:
-            flash("Seda etendust sa juba jälgid.", "notice")
+                if len(new_items) > remaining:
+                    flash(
+                        f"Sul on ruumi veel {remaining} jälgimisele. Vali vähem kuupäevi.",
+                        "error",
+                    )
+                    return redirect(url_for("dashboard"))
+
+                added = 0
+                for item in new_items:
+                    cur.execute(
+                        """
+                        INSERT INTO trackers (
+                            user_id, title, date_text, event_url,
+                            series_url, event_code, image_url, production_url
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (user_id, event_code) DO NOTHING
+                        RETURNING id
+                        """,
+                        (
+                            user["id"], title, item["date_text"],
+                            item["event_url"], item["series_url"],
+                            item["event_code"], image_url, production_url,
+                        ),
+                    )
+                    if cur.fetchone():
+                        added += 1
+
+        duplicates = len(chosen) - added
+        if added == 1:
+            flash("1 etendus lisati jälgimisse.", "success")
+        elif added > 1:
+            flash(f"{added} etendust lisati jälgimisse.", "success")
+        elif duplicates:
+            flash("Kõik valitud etendused olid juba jälgimisel.", "notice")
+
+        if duplicates and added:
+            flash(
+                f"{duplicates} juba jälgimisel olnud etendust jäeti vahele.",
+                "notice",
+            )
 
     except Exception as e:
-        flash(f"Jälgimist ei saanud lisada: {e}", "error")
+        flash(f"Jälgimisi ei saanud lisada: {e}", "error")
 
     return redirect(url_for("my_trackers"))
 
